@@ -305,9 +305,7 @@ pub(super) fn render_agent_row(
     // which otherwise carries the dimmest style in the sidebar, so in unified mode
     // give it the brightest instead. Split mode keeps its existing look.
     let title_style = if config.sidebar_mode.is_unified() {
-        Style::default()
-            .fg(palette.text)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(palette.text)
     } else {
         secondary
     };

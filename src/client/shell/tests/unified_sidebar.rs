@@ -270,7 +270,7 @@ fn split_mode_still_labels_every_agent() {
 }
 
 #[test]
-fn nested_titles_render_brighter_than_the_rows_around_them() {
+fn nested_titles_are_brightened_without_bold() {
     const BOLD: u16 = 1 << 0;
     const DIM: u16 = 1 << 1;
 
@@ -291,10 +291,10 @@ fn nested_titles_render_brighter_than_the_rows_around_them() {
                 0,
                 "a nested agent title must not be dimmed"
             );
-            assert_ne!(
+            assert_eq!(
                 cell.modifier & BOLD,
                 0,
-                "a nested agent title should be emphasised"
+                "a nested agent title is brightened by color alone, not weight"
             );
             found = true;
         }
