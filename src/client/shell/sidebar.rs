@@ -413,15 +413,27 @@ pub(crate) fn render_sidebar(
             Style::default().fg(palette.overlay0),
         );
         let attention = super::super::global_menu::global_menu_attention(snapshot);
-        let launcher_width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        // The collapse chevron is drawn at area.right() - 2, one column inside the
+        // workspace area's right edge. Right-aligning the menu label against that
+        // edge puts its last character under the chevron, which is why the footer
+        // read "men" with the chevron sitting on the "u". Reserve the chevron's
+        // column plus a separating space and align inside what is left.
+        const FOOTER_TOGGLE_RESERVE: u16 = 2;
+        let footer_area = Rect::new(
+            workspace_area.x,
+            workspace_area.y,
+            workspace_area.width.saturating_sub(FOOTER_TOGGLE_RESERVE),
+            workspace_area.height,
+        );
+        let launcher_width = if attention { 8 } else { 6 }.min(footer_area.width);
         hits.global_launcher = Rect::new(
-            workspace_area.right().saturating_sub(launcher_width),
+            footer_area.right().saturating_sub(launcher_width),
             footer_y,
             launcher_width,
             1,
         );
         if attention {
-            let start_x = workspace_area.right().saturating_sub(6);
+            let start_x = footer_area.right().saturating_sub(6);
             put_text(
                 buffer,
                 start_x,
@@ -443,7 +455,7 @@ pub(crate) fn render_sidebar(
         } else {
             put_right_text(
                 buffer,
-                workspace_area,
+                footer_area,
                 footer_y,
                 "menu",
                 Style::default().fg(palette.overlay0),

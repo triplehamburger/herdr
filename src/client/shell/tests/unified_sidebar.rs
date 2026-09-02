@@ -301,3 +301,27 @@ fn nested_titles_are_brightened_without_bold() {
     }
     assert!(found, "nested agent title was not rendered");
 }
+
+#[test]
+fn the_footer_menu_label_is_not_clipped_by_the_collapse_chevron() {
+    // Widths above the mobile threshold, where the desktop sidebar is drawn.
+    for width in [80u16, 106, 160] {
+        let mut state = ClientShellState::new(unified_config());
+        state.set_snapshot(Box::new(nested_snapshot()));
+        state.set_pane_surface(surface());
+        let frame = state.compose(width, 24).expect("composed frame");
+        let footer = (0..frame.height)
+            .map(|row| row_text(&frame, row))
+            .find(|line| line.trim_start().starts_with("new"))
+            .unwrap_or_else(|| panic!("no sidebar footer row at width {width}"));
+        let sidebar = footer.split('\u{2502}').next().unwrap_or_default();
+        assert!(
+            sidebar.contains("menu"),
+            "footer must render the full menu label at width {width}, got: {sidebar:?}"
+        );
+        assert!(
+            sidebar.contains('\u{00ab}'),
+            "footer must still render the collapse chevron at width {width}, got: {sidebar:?}"
+        );
+    }
+}
