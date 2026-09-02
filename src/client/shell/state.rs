@@ -79,6 +79,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) hide_tab_bar_when_single_tab: bool,
     pub(super) spaces: SpacesSidebarConfig,
     pub(super) agents: crate::config::AgentsSidebarConfig,
+    pub(super) sidebar_mode: crate::config::SidebarModeConfig,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,
     pub(super) sound_enabled: bool,
@@ -274,6 +275,7 @@ pub(super) struct WorkspaceHit {
     pub(super) workspace_id: String,
     pub(super) indented: bool,
     pub(super) group_toggle: Option<(Rect, String)>,
+    pub(super) space_toggle: Option<(Rect, String)>,
 }
 
 #[derive(Debug)]
@@ -876,6 +878,7 @@ pub(crate) struct ClientShellState {
     pub(super) workspace_press: Option<ClientWorkspacePress>,
     pub(super) tab_press: Option<ClientTabPress>,
     pub(super) collapsed_groups: HashSet<String>,
+    pub(super) collapsed_spaces: HashSet<String>,
     pub(super) workspace_scroll: usize,
     pub(super) agent_scroll: usize,
     pub(super) tab_scroll: usize,
@@ -1017,6 +1020,7 @@ impl ClientShellState {
             workspace_press: None,
             tab_press: None,
             collapsed_groups: preferences.collapsed_groups.into_iter().collect(),
+            collapsed_spaces: preferences.collapsed_spaces.into_iter().collect(),
             workspace_scroll: 0,
             agent_scroll: 0,
             tab_scroll: 0,

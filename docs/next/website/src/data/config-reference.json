@@ -1018,6 +1018,16 @@
           "description": "Title Herdr writes to the terminal it runs in. Tokens: {hostname}, {workspace}, {tab}, {pane}, {terminal_title}. Empty leaves the outer title alone."
         },
         {
+          "key": "ui.sidebar_mode",
+          "type": "enum",
+          "default": "\"split\"",
+          "description": "Sidebar layout. \"split\" keeps the Spaces panel above a separate Agents panel. \"unified\" removes the Agents panel and nests each space's agents under it, with a per-space expand/collapse toggle.",
+          "values": [
+            "split",
+            "unified"
+          ]
+        },
+        {
           "key": "ui.agent_panel_sort",
           "type": "enum",
           "default": "\"spaces\"",

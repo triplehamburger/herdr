@@ -54,6 +54,7 @@ impl ClientShellState {
             &self.config,
             render::ShellRenderState {
                 collapsed_groups: &self.collapsed_groups,
+                collapsed_spaces: &self.collapsed_spaces,
                 workspace_scroll: &mut self.workspace_scroll,
                 agent_scroll: &mut self.agent_scroll,
                 tab_scroll: &mut self.tab_scroll,

@@ -7,7 +7,9 @@ mod sidebar;
 #[path = "../shell/tabs.rs"]
 mod tabs;
 
-pub(super) use super::agent_sidebar::{ordered_agent_pane_ids, render_agent_panel};
+pub(super) use super::agent_sidebar::{
+    agent_rows, ordered_agent_pane_ids, render_agent_panel, render_agent_row,
+};
 pub(super) use overlays::{
     client_navigator_rows, render_client_overlay, render_context_menu, render_global_menu,
 };
@@ -197,6 +199,7 @@ pub(super) fn render_mode_bar(
 
 pub(super) struct ShellRenderState<'a> {
     pub(super) collapsed_groups: &'a HashSet<String>,
+    pub(super) collapsed_spaces: &'a HashSet<String>,
     pub(super) workspace_scroll: &'a mut usize,
     pub(super) agent_scroll: &'a mut usize,
     pub(super) tab_scroll: &'a mut usize,

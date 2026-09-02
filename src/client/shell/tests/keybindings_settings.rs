@@ -62,6 +62,8 @@ fn manual_client_chrome_preferences_round_trip_per_endpoint() {
     state.sidebar_collapsed_manual = true;
     state.collapsed_groups.insert("repo-two".into());
     state.collapsed_groups.insert("repo-one".into());
+    state.collapsed_spaces.insert("ws_2".into());
+    state.collapsed_spaces.insert("ws_1".into());
     state.persist_chrome_preferences(&mut ClientShellInput::default());
 
     let reloaded_config =
@@ -76,6 +78,10 @@ fn manual_client_chrome_preferences_round_trip_per_endpoint() {
     assert_eq!(
         reloaded.collapsed_groups,
         HashSet::from(["repo-one".to_string(), "repo-two".to_string()])
+    );
+    assert_eq!(
+        reloaded.collapsed_spaces,
+        HashSet::from(["ws_1".to_string(), "ws_2".to_string()])
     );
     std::fs::remove_file(path).expect("remove client chrome preferences");
 }

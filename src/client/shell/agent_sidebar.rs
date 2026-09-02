@@ -10,11 +10,12 @@ use ratatui::{
 
 use super::*;
 
-struct AgentRow {
-    pane_id: String,
-    status: crate::api::schema::AgentStatus,
-    focused: bool,
-    rows: Vec<Vec<crate::ui::ResolvedToken>>,
+pub(super) struct AgentRow {
+    pub(super) pane_id: String,
+    pub(super) workspace_id: String,
+    pub(super) status: crate::api::schema::AgentStatus,
+    pub(super) focused: bool,
+    pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
 }
 
 pub(super) fn ordered_agent_pane_ids(
@@ -190,7 +191,10 @@ pub(super) fn render_agent_panel(
     }
 }
 
-fn agent_rows(snapshot: &ClientShellSnapshot, config: &ClientShellConfig) -> Vec<AgentRow> {
+pub(super) fn agent_rows(
+    snapshot: &ClientShellSnapshot,
+    config: &ClientShellConfig,
+) -> Vec<AgentRow> {
     ordered_agent_pane_ids(snapshot, config.agent_panel_sort)
         .into_iter()
         .filter_map(|pane_id| {
@@ -254,6 +258,7 @@ fn agent_rows(snapshot: &ClientShellSnapshot, config: &ClientShellConfig) -> Vec
             );
             Some(AgentRow {
                 pane_id: agent.pane_id.clone(),
+                workspace_id: agent.workspace_id.clone(),
                 status: agent.agent_status,
                 focused: agent.focused,
                 rows,
@@ -262,7 +267,12 @@ fn agent_rows(snapshot: &ClientShellSnapshot, config: &ClientShellConfig) -> Vec
         .collect()
 }
 
-fn render_agent_row(buffer: &mut Buffer, rect: Rect, row: &AgentRow, config: &ClientShellConfig) {
+pub(super) fn render_agent_row(
+    buffer: &mut Buffer,
+    rect: Rect,
+    row: &AgentRow,
+    config: &ClientShellConfig,
+) {
     let palette = &config.palette;
     let row_style = if row.focused {
         Style::default().bg(palette.active_row_bg)
@@ -278,9 +288,11 @@ fn render_agent_row(buffer: &mut Buffer, rect: Rect, row: &AgentRow, config: &Cl
             .fg(palette.subtext0)
             .add_modifier(Modifier::BOLD)
     };
+    // Unified mode already conveys hierarchy through indentation, so dimming every
+    // unfocused row there only costs legibility. Split mode keeps its existing look.
     let status_style = Style::default()
         .fg(status_color(row.status, palette))
-        .add_modifier(if row.focused {
+        .add_modifier(if row.focused || config.sidebar_mode.is_unified() {
             Modifier::empty()
         } else {
             Modifier::DIM
@@ -288,6 +300,15 @@ fn render_agent_row(buffer: &mut Buffer, rect: Rect, row: &AgentRow, config: &Cl
     let secondary = Style::default()
         .fg(palette.overlay0)
         .add_modifier(Modifier::DIM);
+    // The terminal title is a nested row's real identity - it is the one thing that
+    // says which conversation this is. It resolves through the custom-token slot,
+    // which otherwise carries the dimmest style in the sidebar, so in unified mode
+    // give it the brightest instead. Split mode keeps its existing look.
+    let title_style = if config.sidebar_mode.is_unified() {
+        Style::default().fg(palette.text)
+    } else {
+        secondary
+    };
     let icon = (
         status_icon(row.status, config.status_indicators),
         Style::default().fg(status_color(row.status, palette)),
@@ -309,7 +330,7 @@ fn render_agent_row(buffer: &mut Buffer, rect: Rect, row: &AgentRow, config: &Cl
             status_style,
             name_style,
             secondary,
-            secondary,
+            title_style,
             palette,
             rect.width.saturating_sub(indent as u16) as usize,
         ));

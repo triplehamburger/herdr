@@ -380,6 +380,24 @@ pub struct AgentsSidebarConfig {
 }
 
 impl AgentsSidebarConfig {
+    /// Nested agent rows sit underneath the space that owns them, so the default
+    /// layout's leading `workspace` token would print that space's name a second
+    /// time on every child row. Substitute a layout that identifies the agent
+    /// instead — but only while the operator is still on the stock rows, so an
+    /// explicit `ui.sidebar.agents.rows` is always honoured verbatim.
+    pub fn nested_defaults(mut self) -> Self {
+        if self.rows == Self::default().rows {
+            self.rows = vec![
+                vec![
+                    AgentSidebarToken::StateIcon,
+                    AgentSidebarToken::TerminalTitleStripped,
+                ],
+                vec![AgentSidebarToken::Agent, AgentSidebarToken::Tab],
+            ];
+        }
+        self
+    }
+
     pub(crate) fn rows_for_agent(&self, agent: Option<Agent>) -> &AgentSidebarRows {
         agent
             .and_then(|agent| self.rows_by_agent.get(crate::detect::agent_label(agent)))

@@ -319,6 +319,11 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Set to "" to leave the outer terminal title alone.
 # window_title = "{hostname}: {workspace}"
 
+# Sidebar layout: "split" keeps the spaces panel above a separate agents panel;
+# "unified" drops the agents panel and nests each space's agents under it, with a
+# per-space expand/collapse toggle.
+# sidebar_mode = "split"
+
 # Agent panel ordering: "spaces" (grouped by space) or "priority" (attention queue).
 # "workspaces" is accepted as an alias for "spaces".
 # agent_panel_sort = "spaces"

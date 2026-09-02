@@ -32,6 +32,8 @@ impl ClientShellState {
         };
         let mut collapsed_groups = self.collapsed_groups.iter().cloned().collect::<Vec<_>>();
         collapsed_groups.sort();
+        let mut collapsed_spaces = self.collapsed_spaces.iter().cloned().collect::<Vec<_>>();
+        collapsed_spaces.sort();
         let preferences = preferences::ClientChromePreferences {
             sidebar_width: self.sidebar_width_manual.then_some(self.sidebar_width),
             sidebar_section_split: self
@@ -44,6 +46,7 @@ impl ClientShellState {
                 .agent_panel_sort_manual
                 .then_some(self.config.agent_panel_sort),
             collapsed_groups,
+            collapsed_spaces,
         };
         if let Err(error) = preferences::store(path, preferences) {
             self.endpoint_error = Some(error);
@@ -105,7 +108,12 @@ impl ClientShellConfig {
             tab_bar_position: config.ui.tab_bar_position,
             hide_tab_bar_when_single_tab: config.ui.hide_tab_bar_when_single_tab,
             spaces: config.ui.sidebar.spaces.clone(),
-            agents: config.ui.sidebar.agents.clone(),
+            agents: if config.ui.sidebar_mode.is_unified() {
+                config.ui.sidebar.agents.clone().nested_defaults()
+            } else {
+                config.ui.sidebar.agents.clone()
+            },
+            sidebar_mode: config.ui.sidebar_mode,
             agent_panel_sort: config.ui.agent_panel_sort,
             status_indicators: config.ui.status_indicators,
             sound_enabled: config.ui.sound.enabled,
@@ -307,7 +315,12 @@ impl ClientShellConfig {
                 self.tab_bar_position = ui.tab_bar_position;
                 self.hide_tab_bar_when_single_tab = ui.hide_tab_bar_when_single_tab;
                 self.spaces = ui.sidebar.spaces.clone();
-                self.agents = ui.sidebar.agents.clone();
+                self.agents = if ui.sidebar_mode.is_unified() {
+                    ui.sidebar.agents.clone().nested_defaults()
+                } else {
+                    ui.sidebar.agents.clone()
+                };
+                self.sidebar_mode = ui.sidebar_mode;
                 self.agent_panel_sort = ui.agent_panel_sort;
                 self.status_indicators = ui.status_indicators;
                 self.sound_enabled = ui.sound.enabled;
