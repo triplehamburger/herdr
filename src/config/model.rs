@@ -101,6 +101,22 @@ pub enum AgentPanelSortConfig {
     Priority,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarModeConfig {
+    /// Spaces panel above, a separate agents panel below.
+    #[default]
+    Split,
+    /// One panel: agents nest under the space that owns them.
+    Unified,
+}
+
+impl SidebarModeConfig {
+    pub fn is_unified(self) -> bool {
+        matches!(self, Self::Unified)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum LegacyAgentPanelScopeConfig {
@@ -895,6 +911,9 @@ pub struct UiConfig {
     /// Format for the outer terminal window title. Empty leaves the title alone.
     /// Default: "{hostname}: {workspace}".
     pub window_title: String,
+    /// Sidebar layout. Saved values are "split" or "unified". Default: "split".
+    /// "unified" drops the separate agents panel and nests agents under their space.
+    pub sidebar_mode: SidebarModeConfig,
     /// Agent sidebar ordering. Saved values are "spaces" or "priority". Default: "spaces".
     pub agent_panel_sort: AgentPanelSortConfig,
     /// Retired setting that Herdr wrote before the workspace filter was removed.
@@ -1123,6 +1142,7 @@ impl Default for UiConfig {
             tab_bar_right: Vec::new(),
             tab_bar_right_separator: " ".into(),
             window_title: super::window_title::default_window_title(),
+            sidebar_mode: SidebarModeConfig::Split,
             agent_panel_sort: AgentPanelSortConfig::Spaces,
             _legacy_agent_panel_scope: None,
             status_indicators: StatusIndicatorStyle::Dots,

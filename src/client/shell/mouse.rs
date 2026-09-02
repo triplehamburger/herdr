@@ -2006,6 +2006,16 @@ impl ClientShellState {
                     return;
                 }
                 for hit in &self.hits.workspaces {
+                    if let Some((rect, workspace_id)) = &hit.space_toggle {
+                        if super::contains(*rect, point) {
+                            if !self.collapsed_spaces.remove(workspace_id) {
+                                self.collapsed_spaces.insert(workspace_id.clone());
+                            }
+                            outcome.repaint = true;
+                            self.persist_chrome_preferences(outcome);
+                            return;
+                        }
+                    }
                     if let Some((rect, key)) = &hit.group_toggle {
                         if super::contains(*rect, point) {
                             if !self.collapsed_groups.remove(key) {

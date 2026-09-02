@@ -88,6 +88,7 @@ pub(crate) fn render_collapsed_sidebar(
             workspace_id: workspace.workspace_id.clone(),
             indented: false,
             group_toggle: None,
+            space_toggle: None,
         });
     }
 
@@ -192,10 +193,17 @@ pub(crate) fn render_sidebar(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
-    hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+    let unified = config.sidebar_mode.is_unified();
+    let (workspace_area, detail_area) = if unified {
+        (crate::ui::unified_sidebar_section(area), Rect::default())
+    } else {
+        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split)
+    };
+    hits.sidebar_section_divider = if unified {
+        Rect::default()
+    } else {
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split)
+    };
     put_text(
         buffer,
         workspace_area.x,
@@ -208,6 +216,7 @@ pub(crate) fn render_sidebar(
     );
 
     let entries = workspace_entries(snapshot, state.collapsed_groups);
+    let nested = nested_agent_rows(snapshot, config, &entries, state.collapsed_spaces, unified);
     let body = Rect::new(
         workspace_area.x,
         workspace_area.y.saturating_add(WORKSPACE_HEADER_ROWS),
@@ -219,8 +228,9 @@ pub(crate) fn render_sidebar(
     hits.workspace_body = body;
     let row_heights = entries
         .iter()
-        .map(|entry| {
-            snapshot
+        .enumerate()
+        .map(|(position, entry)| {
+            let base = snapshot
                 .workspaces
                 .get(entry.index)
                 .map(|workspace| {
@@ -234,7 +244,8 @@ pub(crate) fn render_sidebar(
                     .max(1)
                     .min(u16::MAX as usize) as u16
                 })
-                .unwrap_or(1)
+                .unwrap_or(1);
+            base.saturating_add(nested_block_height(nested.get(position)))
         })
         .collect::<Vec<_>>();
     let gaps = entries
@@ -266,11 +277,14 @@ pub(crate) fn render_sidebar(
         };
         let status = displayed_workspace_status(snapshot, workspace, state.collapsed_groups);
         let rows = workspace_rows(workspace, status, entry.indented, &config.spaces);
-        let row_height = (rows.len().max(1).min(u16::MAX as usize) as u16).min(body.height);
+        let nested_rows = nested.get(entry_position).map_or(&[][..], Vec::as_slice);
+        let base_height = (rows.len().max(1).min(u16::MAX as usize) as u16).min(body.height);
+        let row_height =
+            base_height.saturating_add(nested_block_height(nested.get(entry_position)));
         if y.saturating_add(row_height) > body.bottom() {
             break;
         }
-        let rect = Rect::new(body.x, y, content_width, row_height);
+        let rect = Rect::new(body.x, y, content_width, base_height);
         let selected = state.selected_workspace_id == Some(workspace.workspace_id.as_str());
         let dragged = state.dragged_workspace_id == Some(workspace.workspace_id.as_str());
         if selected {
@@ -292,13 +306,37 @@ pub(crate) fn render_sidebar(
             dragged,
             palette,
         );
-        let group_toggle = parent_group_key(snapshot, entry.index).map(|key| {
-            let rect = Rect::new(rect.right().saturating_sub(1), rect.y, 1, 1);
+        let space_collapsed = state.collapsed_spaces.contains(&workspace.workspace_id);
+        let has_agents = unified
+            && snapshot
+                .agents
+                .iter()
+                .any(|agent| agent.workspace_id == workspace.workspace_id);
+        let space_toggle = has_agents.then(|| {
+            let toggle = Rect::new(rect.right().saturating_sub(1), rect.y, 1, 1);
             put_text(
                 buffer,
-                rect.x,
-                rect.y,
-                rect.width,
+                toggle.x,
+                toggle.y,
+                toggle.width,
+                if space_collapsed { "▸" } else { "▾" },
+                Style::default().fg(palette.accent),
+            );
+            (toggle, workspace.workspace_id.clone())
+        });
+        if space_collapsed {
+            render_collapsed_space_counts(buffer, rect, snapshot, &workspace.workspace_id, config);
+        }
+        let group_toggle = parent_group_key(snapshot, entry.index).map(|key| {
+            let column = rect
+                .right()
+                .saturating_sub(1 + u16::from(space_toggle.is_some()));
+            let toggle = Rect::new(column, rect.y, 1, 1);
+            put_text(
+                buffer,
+                toggle.x,
+                toggle.y,
+                toggle.width,
                 if state.collapsed_groups.contains(&key) {
                     "▸"
                 } else {
@@ -306,18 +344,36 @@ pub(crate) fn render_sidebar(
                 },
                 Style::default().fg(palette.accent),
             );
-            (rect, key)
+            (toggle, key)
         });
         hits.workspaces.push(WorkspaceHit {
             rect,
             workspace_id: workspace.workspace_id.clone(),
             indented: entry.indented,
             group_toggle,
+            space_toggle,
         });
+        let mut nested_y = rect.bottom();
+        for (index, agent_row) in nested_rows.iter().enumerate() {
+            let height = (agent_row.rows.len().max(1).min(u16::MAX as usize) as u16).max(1);
+            if nested_y.saturating_add(height) > body.bottom() {
+                break;
+            }
+            let agent_rect = Rect::new(body.x, nested_y, content_width, height);
+            render_nested_agent_row(
+                buffer,
+                agent_rect,
+                agent_row,
+                config,
+                index + 1 == nested_rows.len(),
+            );
+            hits.agents.push((agent_rect, agent_row.pane_id.clone()));
+            nested_y = nested_y.saturating_add(height);
+        }
         let gap = entries
             .get(entry_position + 1)
             .map_or(0, |next| u16::from(!next.indented) * config.spaces.row_gap);
-        y = y.saturating_add(row_height + gap);
+        y = nested_y.saturating_add(gap);
     }
 
     if show_scrollbar {
@@ -395,14 +451,18 @@ pub(crate) fn render_sidebar(
         }
     }
 
-    super::render_agent_panel(
-        buffer,
-        detail_area,
-        snapshot,
-        config,
-        state.agent_scroll,
-        hits,
-    );
+    if unified {
+        *state.agent_scroll = 0;
+    } else {
+        super::render_agent_panel(
+            buffer,
+            detail_area,
+            snapshot,
+            config,
+            state.agent_scroll,
+            hits,
+        );
+    }
 
     hits.sidebar_toggle = Rect::new(
         area.right().saturating_sub(2),
@@ -418,6 +478,152 @@ pub(crate) fn render_sidebar(
         "«",
         Style::default().fg(palette.overlay0),
     );
+}
+
+/// Agents to draw underneath each space entry. Empty in split mode, and empty for
+/// a space the viewer has collapsed.
+fn nested_agent_rows(
+    snapshot: &ClientShellSnapshot,
+    config: &ClientShellConfig,
+    entries: &[WorkspaceEntry],
+    collapsed_spaces: &HashSet<String>,
+    unified: bool,
+) -> Vec<Vec<super::agent_sidebar::AgentRow>> {
+    if !unified {
+        return entries.iter().map(|_| Vec::new()).collect();
+    }
+    let mut by_space: HashMap<String, Vec<super::agent_sidebar::AgentRow>> = HashMap::new();
+    for row in super::agent_rows(snapshot, config) {
+        by_space
+            .entry(row.workspace_id.clone())
+            .or_default()
+            .push(row);
+    }
+    entries
+        .iter()
+        .map(|entry| {
+            snapshot
+                .workspaces
+                .get(entry.index)
+                .filter(|workspace| !collapsed_spaces.contains(&workspace.workspace_id))
+                .and_then(|workspace| by_space.remove(&workspace.workspace_id))
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn nested_block_height(rows: Option<&Vec<super::agent_sidebar::AgentRow>>) -> u16 {
+    rows.map_or(0, |rows| {
+        rows.iter()
+            .map(|row| row.rows.len().max(1).min(u16::MAX as usize) as u16)
+            .fold(0u16, |total, height| total.saturating_add(height))
+    })
+}
+
+/// A collapsed space hides its agent rows, so it carries their attention states as
+/// counts instead. Without this, collapsing a space costs the viewer the very signal
+/// the unified sidebar exists to surface.
+fn render_collapsed_space_counts(
+    buffer: &mut Buffer,
+    rect: Rect,
+    snapshot: &ClientShellSnapshot,
+    workspace_id: &str,
+    config: &ClientShellConfig,
+) {
+    use crate::api::schema::AgentStatus;
+
+    let mut blocked = 0usize;
+    let mut done = 0usize;
+    let mut working = 0usize;
+    for agent in snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.workspace_id == workspace_id)
+    {
+        match agent.agent_status {
+            AgentStatus::Blocked => blocked += 1,
+            AgentStatus::Done => done += 1,
+            AgentStatus::Working => working += 1,
+            AgentStatus::Idle | AgentStatus::Unknown => {}
+        }
+    }
+    let summary = [
+        (blocked, AgentStatus::Blocked),
+        (done, AgentStatus::Done),
+        (working, AgentStatus::Working),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, status)| {
+        (
+            format!("{count}{} ", status_icon(status, config.status_indicators)),
+            status,
+        )
+    })
+    .collect::<Vec<_>>();
+    if summary.is_empty() {
+        return;
+    }
+
+    // Right aligned, leaving the outermost column to the expand/collapse toggle.
+    let total_width = summary
+        .iter()
+        .map(|(text, _)| display_width(text))
+        .fold(0u16, |total, width| total.saturating_add(width));
+    if total_width.saturating_add(2) > rect.width {
+        return;
+    }
+    let mut x = rect.right().saturating_sub(1 + total_width);
+    for (text, status) in &summary {
+        x = put_segment(
+            buffer,
+            x,
+            rect.y,
+            rect.right().saturating_sub(1),
+            text,
+            Style::default().fg(status_color(*status, &config.palette)),
+        );
+    }
+}
+
+fn render_nested_agent_row(
+    buffer: &mut Buffer,
+    area: Rect,
+    row: &super::agent_sidebar::AgentRow,
+    config: &ClientShellConfig,
+    last: bool,
+) {
+    const PREFIX_WIDTH: u16 = 3;
+    if area.width <= PREFIX_WIDTH {
+        return;
+    }
+    for index in 0..area.height {
+        let y = area.y + index;
+        if y >= area.bottom() {
+            break;
+        }
+        let glyph = match (index == 0, last) {
+            (true, true) => " └ ",
+            (true, false) => " ├ ",
+            (false, true) => "   ",
+            (false, false) => " │ ",
+        };
+        put_text(
+            buffer,
+            area.x,
+            y,
+            PREFIX_WIDTH,
+            glyph,
+            Style::default().fg(config.palette.overlay0),
+        );
+    }
+    let inner = Rect::new(
+        area.x.saturating_add(PREFIX_WIDTH),
+        area.y,
+        area.width.saturating_sub(PREFIX_WIDTH),
+        area.height,
+    );
+    super::render_agent_row(buffer, inner, row, config);
 }
 
 pub(crate) fn render_sidebar_background(buffer: &mut Buffer, area: Rect, palette: &Palette) {
