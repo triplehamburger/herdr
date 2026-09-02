@@ -499,6 +499,11 @@ fn nested_agent_rows(
             .or_default()
             .push(row);
     }
+    for rows in by_space.values_mut() {
+        for row in rows.iter_mut() {
+            hide_unfocused_agent_label(row);
+        }
+    }
     entries
         .iter()
         .map(|entry| {
@@ -510,6 +515,20 @@ fn nested_agent_rows(
                 .unwrap_or_default()
         })
         .collect()
+}
+
+/// Nested rows sit under the space that owns them, and in practice every agent in a
+/// space is the same kind, so printing the agent name on each one is noise that
+/// crowds out the row's actual identity. Keep it on the focused session only, where
+/// it tells you what you are about to talk to. A row left with no tokens disappears.
+fn hide_unfocused_agent_label(row: &mut super::agent_sidebar::AgentRow) {
+    if row.focused {
+        return;
+    }
+    for line in row.rows.iter_mut() {
+        line.retain(|token| !matches!(token.kind, crate::ui::ResolvedTokenKind::Agent(_)));
+    }
+    row.rows.retain(|line| !line.is_empty());
 }
 
 fn nested_block_height(rows: Option<&Vec<super::agent_sidebar::AgentRow>>) -> u16 {
@@ -870,9 +889,7 @@ fn render_workspace_rows(
                 status_icon(status, indicators),
                 Style::default().fg(status_color(status, palette)),
             ),
-            Style::default()
-                .fg(status_color(status, palette))
-                .add_modifier(Modifier::DIM),
+            Style::default().fg(status_color(status, palette)),
             workspace_style,
             secondary_style,
             Style::default().fg(palette.overlay1),

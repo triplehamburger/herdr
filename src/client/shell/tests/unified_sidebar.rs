@@ -224,3 +224,47 @@ fn a_space_with_no_agents_offers_no_toggle() {
         "an empty space has nothing to expand, so it draws no toggle"
     );
 }
+
+#[test]
+fn the_agent_label_shows_only_on_the_focused_session() {
+    let mut state = ClientShellState::new(unified_config());
+    let mut snap = nested_snapshot();
+    // pane_2 is the session the user is on.
+    for agent in snap.agents.iter_mut() {
+        agent.focused = agent.pane_id == "pane_2";
+    }
+    state.set_snapshot(Box::new(snap));
+    state.set_pane_surface(surface());
+    let frame = state.compose(106, 30).expect("composed frame");
+    let text = sidebar_text(&frame);
+
+    // Every agent is still listed by title...
+    assert!(text.contains("alpha-agent"));
+    assert!(text.contains("beta-agent"));
+    assert!(text.contains("gamma-agent"));
+
+    // ...but "claude" appears exactly once, on the focused row.
+    assert_eq!(
+        text.matches("claude").count(),
+        1,
+        "the agent label belongs to the focused session only:\n{text}"
+    );
+}
+
+#[test]
+fn split_mode_still_labels_every_agent() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let mut snap = nested_snapshot();
+    for agent in snap.agents.iter_mut() {
+        agent.focused = agent.pane_id == "pane_2";
+    }
+    state.set_snapshot(Box::new(snap));
+    state.set_pane_surface(surface());
+    let frame = state.compose(106, 30).expect("composed frame");
+    let text = sidebar_text(&frame);
+    assert_eq!(
+        text.matches("claude").count(),
+        3,
+        "split mode must keep labelling every agent:\n{text}"
+    );
+}

@@ -288,9 +288,11 @@ pub(super) fn render_agent_row(
             .fg(palette.subtext0)
             .add_modifier(Modifier::BOLD)
     };
+    // Unified mode already conveys hierarchy through indentation, so dimming every
+    // unfocused row there only costs legibility. Split mode keeps its existing look.
     let status_style = Style::default()
         .fg(status_color(row.status, palette))
-        .add_modifier(if row.focused {
+        .add_modifier(if row.focused || config.sidebar_mode.is_unified() {
             Modifier::empty()
         } else {
             Modifier::DIM
