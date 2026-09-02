@@ -300,6 +300,17 @@ pub(super) fn render_agent_row(
     let secondary = Style::default()
         .fg(palette.overlay0)
         .add_modifier(Modifier::DIM);
+    // The terminal title is a nested row's real identity - it is the one thing that
+    // says which conversation this is. It resolves through the custom-token slot,
+    // which otherwise carries the dimmest style in the sidebar, so in unified mode
+    // give it the brightest instead. Split mode keeps its existing look.
+    let title_style = if config.sidebar_mode.is_unified() {
+        Style::default()
+            .fg(palette.text)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        secondary
+    };
     let icon = (
         status_icon(row.status, config.status_indicators),
         Style::default().fg(status_color(row.status, palette)),
@@ -321,7 +332,7 @@ pub(super) fn render_agent_row(
             status_style,
             name_style,
             secondary,
-            secondary,
+            title_style,
             palette,
             rect.width.saturating_sub(indent as u16) as usize,
         ));

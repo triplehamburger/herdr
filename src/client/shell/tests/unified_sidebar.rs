@@ -268,3 +268,36 @@ fn split_mode_still_labels_every_agent() {
         "split mode must keep labelling every agent:\n{text}"
     );
 }
+
+#[test]
+fn nested_titles_render_brighter_than_the_rows_around_them() {
+    const BOLD: u16 = 1 << 0;
+    const DIM: u16 = 1 << 1;
+
+    let mut state = ClientShellState::new(unified_config());
+    state.set_snapshot(Box::new(nested_snapshot()));
+    state.set_pane_surface(surface());
+    let frame = state.compose(106, 30).expect("composed frame");
+
+    // Find the cell where a nested agent title starts and check it is not dimmed.
+    let width = usize::from(frame.width);
+    let mut found = false;
+    for row in 0..frame.height {
+        let text = row_text(&frame, row);
+        if let Some(column) = text.find("beta-agent") {
+            let cell = &frame.cells[usize::from(row) * width + column];
+            assert_eq!(
+                cell.modifier & DIM,
+                0,
+                "a nested agent title must not be dimmed"
+            );
+            assert_ne!(
+                cell.modifier & BOLD,
+                0,
+                "a nested agent title should be emphasised"
+            );
+            found = true;
+        }
+    }
+    assert!(found, "nested agent title was not rendered");
+}

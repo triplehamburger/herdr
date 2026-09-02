@@ -889,7 +889,9 @@ fn render_workspace_rows(
                 status_icon(status, indicators),
                 Style::default().fg(status_color(status, palette)),
             ),
-            Style::default().fg(status_color(status, palette)),
+            Style::default()
+                .fg(status_color(status, palette))
+                .add_modifier(Modifier::DIM),
             workspace_style,
             secondary_style,
             Style::default().fg(palette.overlay1),
