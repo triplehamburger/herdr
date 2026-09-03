@@ -6,6 +6,7 @@ mod composition;
 mod config;
 mod context_menu;
 mod copy_mode;
+mod forks;
 mod global_menu;
 mod graphics;
 mod input;

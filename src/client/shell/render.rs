@@ -262,6 +262,9 @@ pub(super) fn render_shell(
             &mut hits,
         );
     }
+    if layout.fork_bar.height > 0 {
+        super::forks::render_fork_bar(buffer, layout.fork_bar, snapshot, config, &mut hits);
+    }
     if !config.mouse_capture {
         hits.sidebar_divider = Rect::default();
         hits.sidebar_section_divider = Rect::default();
@@ -271,6 +274,7 @@ pub(super) fn render_shell(
         hits.new_workspace = Rect::default();
         hits.workspaces.clear();
         hits.agents.clear();
+        hits.forks.clear();
         hits.tab_scroll_left = Rect::default();
         hits.tab_scroll_right = Rect::default();
         hits.new_tab = Rect::default();

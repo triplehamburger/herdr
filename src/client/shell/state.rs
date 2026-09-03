@@ -114,6 +114,7 @@ pub(crate) struct ClientShellConfig {
 pub(super) struct ClientShellLayout {
     pub sidebar: Rect,
     pub tab_bar: Rect,
+    pub fork_bar: Rect,
     pub mobile_header: Rect,
     pub pane_surface: Rect,
 }
@@ -140,6 +141,7 @@ pub(super) struct ShellHitMap {
     pub(super) popup: Option<PaneHit>,
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
+    pub(super) forks: Vec<(Rect, String)>,
     pub(super) agent_body: Rect,
     pub(super) agent_scrollbar: Rect,
     pub(super) agent_scroll_metrics: Option<crate::pane::ScrollMetrics>,
@@ -1157,12 +1159,27 @@ impl ClientShellState {
         }
     }
 
+    fn fork_bar_rows(&self) -> u16 {
+        let has_forks = self.snapshot.as_deref().is_some_and(|snapshot| {
+            snapshot
+                .agents
+                .iter()
+                .any(|agent| super::forks::fork_name(agent).is_some())
+        });
+        if has_forks {
+            super::forks::FORK_BAR_HEIGHT
+        } else {
+            0
+        }
+    }
+
     pub(super) fn layout(&self, cols: u16, rows: u16) -> ClientShellLayout {
         self.config.layout(
             cols,
             rows,
             self.sidebar_collapsed,
             self.focused_tab_count(),
+            self.fork_bar_rows(),
             self.sidebar_width,
         )
     }

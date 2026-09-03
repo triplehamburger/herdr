@@ -2073,6 +2073,7 @@ impl ClientShellState {
                     .hits
                     .agents
                     .iter()
+                    .chain(self.hits.forks.iter())
                     .find(|(rect, _)| super::contains(*rect, point))
                     .map(|(_, pane_id)| pane_id.clone());
                 if let Some(pane_id) = agent_pane_id {

@@ -359,6 +359,7 @@ impl ClientShellConfig {
         rows: u16,
         sidebar_collapsed: bool,
         tab_count: usize,
+        fork_rows: u16,
         sidebar_width: u16,
     ) -> ClientShellLayout {
         if cols <= self.mobile_width_threshold {
@@ -366,6 +367,7 @@ impl ClientShellConfig {
             return ClientShellLayout {
                 sidebar: Rect::default(),
                 tab_bar: Rect::default(),
+                fork_bar: Rect::default(),
                 mobile_header: Rect::new(0, 0, cols, header_height),
                 pane_surface: Rect::new(0, header_height, cols, rows.saturating_sub(header_height)),
             };
@@ -388,7 +390,7 @@ impl ClientShellConfig {
         let main = Rect::new(sidebar_width, 0, cols.saturating_sub(sidebar_width), rows);
         let show_tab_bar = rows > 1 && !(self.hide_tab_bar_when_single_tab && tab_count == 1);
         let tab_height = u16::from(show_tab_bar);
-        let (tab_bar, pane_surface) = match self.tab_bar_position {
+        let (tab_bar, mut pane_surface) = match self.tab_bar_position {
             TabBarPositionConfig::Top => (
                 Rect::new(main.x, 0, main.width, tab_height),
                 Rect::new(
@@ -409,9 +411,41 @@ impl ClientShellConfig {
             ),
         };
 
+        // The fork strip sits against the tab bar, taking its rows from the pane
+        // surface and only when there is something to show plus room to show it.
+        let fork_rows = if pane_surface.height > fork_rows {
+            fork_rows
+        } else {
+            0
+        };
+        let fork_bar = match (fork_rows, self.tab_bar_position) {
+            (0, _) => Rect::default(),
+            (_, TabBarPositionConfig::Top) => {
+                let bar = Rect::new(
+                    pane_surface.x,
+                    pane_surface.y,
+                    pane_surface.width,
+                    fork_rows,
+                );
+                pane_surface.y = pane_surface.y.saturating_add(fork_rows);
+                pane_surface.height = pane_surface.height.saturating_sub(fork_rows);
+                bar
+            }
+            (_, TabBarPositionConfig::Bottom) => {
+                pane_surface.height = pane_surface.height.saturating_sub(fork_rows);
+                Rect::new(
+                    pane_surface.x,
+                    pane_surface.bottom(),
+                    pane_surface.width,
+                    fork_rows,
+                )
+            }
+        };
+
         ClientShellLayout {
             sidebar: Rect::new(0, 0, sidebar_width, rows),
             tab_bar,
+            fork_bar,
             mobile_header: Rect::default(),
             pane_surface,
         }
@@ -431,7 +465,7 @@ impl ClientShellConfig {
             .unwrap_or(self.sidebar_width)
             .clamp(min_width, max_width);
         let surface = self
-            .layout(cols, rows, sidebar_collapsed, 0, sidebar_width)
+            .layout(cols, rows, sidebar_collapsed, 0, 0, sidebar_width)
             .pane_surface;
         ClientSurfaceSize {
             cols: surface.width.max(1),
@@ -475,6 +509,31 @@ mod tests {
             shell.keybinds.prefix,
             (KeyCode::Char('a'), KeyModifiers::CONTROL)
         );
+    }
+
+    #[test]
+    fn fork_bar_sits_against_the_tab_bar_and_takes_its_rows_from_the_pane_surface() {
+        let mut shell = ClientShellConfig::from_config(&Config::default());
+        let without = shell.layout(100, 30, true, 2, 0, 20);
+        assert_eq!(without.fork_bar, Rect::default());
+
+        let top = shell.layout(100, 30, true, 2, 2, 20);
+        assert_eq!(top.fork_bar.y, top.tab_bar.bottom());
+        assert_eq!(top.pane_surface.y, top.fork_bar.bottom());
+        assert_eq!(
+            top.pane_surface.height,
+            without.pane_surface.height.saturating_sub(2)
+        );
+
+        shell.tab_bar_position = TabBarPositionConfig::Bottom;
+        let bottom = shell.layout(100, 30, true, 2, 2, 20);
+        assert_eq!(bottom.fork_bar.bottom(), bottom.tab_bar.y);
+        assert_eq!(bottom.fork_bar.y, bottom.pane_surface.bottom());
+
+        // No room for the strip means no strip, never a zero-height pane surface.
+        let cramped = shell.layout(100, 2, true, 2, 2, 20);
+        assert_eq!(cramped.fork_bar, Rect::default());
+        assert!(cramped.pane_surface.height > 0);
     }
 
     #[test]
