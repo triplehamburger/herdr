@@ -191,6 +191,20 @@ pub(super) fn render_agent_panel(
     }
 }
 
+/// True when every configured pair is present on the agent, so an operator can
+/// retire finished agents from the sidebar without closing their panes.
+fn agent_is_hidden(agent: &crate::protocol::ClientShellAgent, config: &ClientShellConfig) -> bool {
+    if config.hidden_agent_tokens.is_empty() {
+        return false;
+    }
+    config.hidden_agent_tokens.iter().all(|(key, value)| {
+        agent
+            .tokens
+            .iter()
+            .any(|(token, token_value)| token == key && token_value == value)
+    })
+}
+
 pub(super) fn agent_rows(
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
@@ -202,6 +216,9 @@ pub(super) fn agent_rows(
                 .agents
                 .iter()
                 .find(|agent| agent.pane_id == pane_id)?;
+            if agent_is_hidden(agent, config) {
+                return None;
+            }
             let workspace = snapshot
                 .workspaces
                 .iter()
@@ -360,5 +377,58 @@ fn sidebar_status_text(status: crate::api::schema::AgentStatus) -> &'static str 
         AgentStatus::Done => "done",
         AgentStatus::Working => "working",
         AgentStatus::Idle | AgentStatus::Unknown => "idle",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::schema::AgentStatus;
+    use std::collections::BTreeMap;
+
+    fn agent(tokens: &[(&str, &str)]) -> crate::protocol::ClientShellAgent {
+        crate::protocol::ClientShellAgent {
+            pane_id: "w1:p1".into(),
+            workspace_id: "w1".into(),
+            tab_id: "w1:t1".into(),
+            name: None,
+            display_agent: None,
+            agent: None,
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            agent_status: AgentStatus::Idle,
+            state_change_seq: 1,
+            state_labels: Vec::new(),
+            tokens: tokens
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
+            focused: false,
+        }
+    }
+
+    #[test]
+    fn hidden_agent_tokens_filter_only_on_a_full_match() {
+        let mut config = ClientShellConfig::from_config(&crate::config::Config::default());
+        // Nothing configured by default, so nothing is hidden.
+        assert!(config.hidden_agent_tokens.is_empty());
+        assert!(!agent_is_hidden(&agent(&[("mode", "succeeded")]), &config));
+
+        config.hidden_agent_tokens =
+            BTreeMap::from([("mode".to_string(), "succeeded".to_string())]);
+        assert!(agent_is_hidden(&agent(&[("mode", "succeeded")]), &config));
+        assert!(!agent_is_hidden(&agent(&[("mode", "developing")]), &config));
+        assert!(!agent_is_hidden(&agent(&[]), &config));
+
+        // Every configured pair must match, not merely one of them.
+        config
+            .hidden_agent_tokens
+            .insert("kind".to_string(), "fork".to_string());
+        assert!(!agent_is_hidden(&agent(&[("mode", "succeeded")]), &config));
+        assert!(agent_is_hidden(
+            &agent(&[("mode", "succeeded"), ("kind", "fork")]),
+            &config
+        ));
     }
 }

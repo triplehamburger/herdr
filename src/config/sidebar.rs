@@ -447,6 +447,11 @@ impl Default for SpacesSidebarConfig {
 pub struct SidebarConfig {
     pub agents: AgentsSidebarConfig,
     pub spaces: SpacesSidebarConfig,
+    /// Hide agent rows whose display-only metadata tokens match every pair here.
+    /// Empty (the default) hides nothing. Lets an operator retire finished agents
+    /// from the sidebar without closing their panes.
+    #[serde(default)]
+    pub hidden_agent_tokens: std::collections::BTreeMap<String, String>,
 }
 
 #[cfg(test)]
