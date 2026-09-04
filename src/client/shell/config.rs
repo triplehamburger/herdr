@@ -107,6 +107,7 @@ impl ClientShellConfig {
             mobile_width_threshold: config.ui.mobile_width_threshold,
             tab_bar_position: config.ui.tab_bar_position,
             hide_tab_bar_when_single_tab: config.ui.hide_tab_bar_when_single_tab,
+            show_fork_strip: config.ui.show_fork_strip,
             spaces: config.ui.sidebar.spaces.clone(),
             agents: if config.ui.sidebar_mode.is_unified() {
                 config.ui.sidebar.agents.clone().nested_defaults()
@@ -314,6 +315,7 @@ impl ClientShellConfig {
                 self.mobile_width_threshold = ui.mobile_width_threshold;
                 self.tab_bar_position = ui.tab_bar_position;
                 self.hide_tab_bar_when_single_tab = ui.hide_tab_bar_when_single_tab;
+                self.show_fork_strip = ui.show_fork_strip;
                 self.spaces = ui.sidebar.spaces.clone();
                 self.agents = if ui.sidebar_mode.is_unified() {
                     ui.sidebar.agents.clone().nested_defaults()
@@ -413,7 +415,7 @@ impl ClientShellConfig {
 
         // The fork strip sits against the tab bar, taking its rows from the pane
         // surface and only when there is something to show plus room to show it.
-        let fork_rows = if pane_surface.height > fork_rows {
+        let fork_rows = if self.show_fork_strip && pane_surface.height > fork_rows {
             fork_rows
         } else {
             0
@@ -509,6 +511,26 @@ mod tests {
             shell.keybinds.prefix,
             (KeyCode::Char('a'), KeyModifiers::CONTROL)
         );
+    }
+
+    #[test]
+    fn fork_strip_disabled_costs_no_rows_and_leaves_the_pane_surface_whole() {
+        let mut config = Config::default();
+        config.ui.show_fork_strip = false;
+        let off = ClientShellConfig::from_config(&config);
+        let on = ClientShellConfig::from_config(&Config::default());
+
+        // Two forks to show: enabled takes the rows, disabled takes none.
+        let disabled = off.layout(100, 30, true, 2, 2, 20);
+        let enabled = on.layout(100, 30, true, 2, 2, 20);
+        let no_forks = on.layout(100, 30, true, 2, 0, 20);
+
+        assert_eq!(disabled.fork_bar, Rect::default());
+        assert!(
+            enabled.fork_bar.height > 0,
+            "sanity: enabled shows the strip"
+        );
+        assert_eq!(disabled.pane_surface, no_forks.pane_surface);
     }
 
     #[test]
