@@ -108,6 +108,16 @@ pub(super) fn render_mode_bar(
                     (" done".to_owned(), base),
                 ]);
             }
+            ClientShellMode::PaneNav => {
+                segments.extend([
+                    (" PANE NAV ".to_owned(), mode_style),
+                    ("  ".to_owned(), base),
+                    ("←/→/↑/↓".to_owned(), key),
+                    (" focus pane  ".to_owned(), base),
+                    ("esc".to_owned(), key),
+                    (" done".to_owned(), base),
+                ]);
+            }
             ClientShellMode::Copy => {
                 let copy_mode = copy_mode?;
                 if let Some(prompt) = copy_mode.search_prompt.as_ref() {

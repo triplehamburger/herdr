@@ -776,3 +776,92 @@ fn resize_mode_reuses_endpoint_resize_and_stays_active_until_done() {
     assert!(state.handle_input_bytes(b"\r").actions.is_empty());
     assert_eq!(state.mode, ClientShellMode::Terminal);
 }
+
+#[test]
+fn pane_nav_mode_moves_focus_with_arrows_and_still_types_into_the_pane() {
+    let mut config = Config::default();
+    config.keys.pane_nav_mode =
+        crate::config::BindingConfig::Many(vec!["prefix+a".into(), "ctrl+alt+n".into()]);
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+
+    assert!(state.handle_input_bytes(&[0x02]).actions.is_empty());
+    assert!(state.handle_input_bytes(b"a").actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    let left = state.handle_input_bytes(b"\x1b[D");
+    let [ClientShellAction::Endpoint { request, .. }] = &left.actions[..] else {
+        panic!("a bare arrow should move pane focus through the endpoint API");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneFocusDirection(params)
+            if params.direction == crate::api::schema::PaneDirection::Left
+    ));
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    // The point of the mode: ordinary keys still reach the focused pane, so
+    // dictated text lands in the prompt without exiting first. "a" is the bare
+    // RHS of the default prefix+a binding and must stay typeable.
+    let typed = state.handle_input_bytes(b"a");
+    assert!(typed.actions.is_empty());
+    assert!(matches!(
+        &typed.requests[..],
+        [ClientMessage::ClientShellPaneInput { events, .. }]
+            if matches!(
+                &events[..],
+                [ClientPaneInputEvent::Key {
+                    code: crate::protocol::ClientKeyCode::Char('a'),
+                    ..
+                }]
+            )
+    ));
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    // A modified arrow belongs to the pane, not to navigation.
+    let word_left = state.handle_input_bytes(b"\x1b[1;5D");
+    assert!(word_left.actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    // The direct chord toggles back out. Only a direct chord can: a prefix binding
+    // reaches the action after prefix handling has already left the mode, so
+    // "prefix+a" enters and Esc or the chord leaves.
+    assert!(state.handle_input_bytes(b"\x1b[110;7u").actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+
+    // Esc is the other way out, for when the chord is unbound.
+    assert!(state.handle_input_bytes(b"\x1b[110;7u").actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+    state.handle_input_bytes(b"\x1b");
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+}
+
+#[test]
+fn pane_nav_mode_toggles_from_a_bare_f13_binding() {
+    // Caps Lock cannot reach a terminal as itself, but macOS's own hidutil can
+    // remap it to F13, which arrives as a plain kitty functional key.
+    let mut config = Config::default();
+    config.keys.pane_nav_mode = crate::config::BindingConfig::one("f13");
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+
+    assert!(state.handle_input_bytes(b"\x1b[57376u").actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    let left = state.handle_input_bytes(b"\x1b[D");
+    assert!(matches!(
+        &left.actions[..],
+        [ClientShellAction::Endpoint { request, .. }]
+            if matches!(
+                &request.method,
+                crate::api::schema::Method::PaneFocusDirection(params)
+                    if params.direction == crate::api::schema::PaneDirection::Left
+            )
+    ));
+    assert_eq!(state.mode, ClientShellMode::PaneNav);
+
+    assert!(state.handle_input_bytes(b"\x1b[57376u").actions.is_empty());
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+}

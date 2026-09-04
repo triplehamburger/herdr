@@ -141,6 +141,18 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                if action == crate::input::KeybindAction::EnterPaneNavMode {
+                    // Toggle: the same binding leaves the mode. Pane nav cannot use the
+                    // resize-mode trick of exiting on the bare prefix RHS, because in this
+                    // mode that letter still has to be typeable into the focused pane.
+                    self.mode = if self.mode == ClientShellMode::PaneNav {
+                        self.copy_or_terminal_mode()
+                    } else {
+                        ClientShellMode::PaneNav
+                    };
+                    outcome.repaint = true;
+                    return;
+                }
                 if action == crate::input::KeybindAction::CopyMode {
                     if self.enter_copy_mode(outcome) {
                         outcome.repaint = true;

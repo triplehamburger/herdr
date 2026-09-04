@@ -794,6 +794,12 @@
           "description": "Enter resize mode."
         },
         {
+          "key": "keys.pane_nav_mode",
+          "type": "keybinding",
+          "default": "\"prefix+a\"",
+          "description": "Enter pane navigation mode, where the bare arrow keys move focus between panes while every other key still reaches the focused pane. Leave it with `esc`, or toggle it with a direct chord binding."
+        },
+        {
           "key": "keys.resize_pane_left",
           "type": "keybinding",
           "default": "unset",

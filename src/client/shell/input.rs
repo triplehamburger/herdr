@@ -573,6 +573,7 @@ impl ClientShellState {
                 self.route_resize_key(key, outcome);
                 None
             }
+            ClientShellMode::PaneNav => self.route_pane_nav_key(key, outcome),
             ClientShellMode::Copy => {
                 if crate::config::terminal_key_matches_combo(key, self.config.keybinds.prefix) {
                     self.mode = ClientShellMode::Prefix;
@@ -900,6 +901,50 @@ impl ClientShellState {
             crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget { pane_id }),
             outcome,
         );
+    }
+
+    /// Sticky pane-focus mode. Bare arrows move focus; every other key is routed
+    /// exactly as it would be in `Terminal` mode so dictated text still reaches the
+    /// focused pane's prompt without exiting the mode.
+    fn route_pane_nav_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) -> Option<ClientInputTarget> {
+        if key.code == KeyCode::Esc {
+            self.mode = self.copy_or_terminal_mode();
+            outcome.repaint = true;
+            return None;
+        }
+
+        // Only unmodified arrows navigate. Modified arrows (word motion, selection)
+        // stay with the pane.
+        if key.modifiers.is_empty() {
+            let action = match key.code {
+                KeyCode::Left => Some(crate::input::KeybindAction::FocusPaneLeft),
+                KeyCode::Down => Some(crate::input::KeybindAction::FocusPaneDown),
+                KeyCode::Up => Some(crate::input::KeybindAction::FocusPaneUp),
+                KeyCode::Right => Some(crate::input::KeybindAction::FocusPaneRight),
+                _ => None,
+            };
+            if let Some(action) = action {
+                self.record_binding(crate::input::KeybindMatch::Action(action), outcome);
+                return None;
+            }
+        }
+
+        if let Some(binding) =
+            crate::input::resolve_direct_binding(&self.config.keybinds.keybinds, key)
+        {
+            self.record_binding(binding, outcome);
+            return None;
+        }
+        if crate::config::terminal_key_matches_combo(key, self.config.keybinds.prefix) {
+            self.mode = ClientShellMode::Prefix;
+            outcome.repaint = true;
+            return None;
+        }
+        self.focused_pane_id().map(ClientInputTarget::Pane)
     }
 
     fn route_resize_key(
