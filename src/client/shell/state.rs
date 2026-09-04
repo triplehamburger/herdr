@@ -311,6 +311,10 @@ pub(super) enum ClientShellMode {
     Prefix,
     Navigate,
     Resize,
+    /// Sticky pane-focus mode: bare arrows move focus between panes while every
+    /// other key still reaches the focused pane, so dictated text lands in the
+    /// prompt without leaving the mode.
+    PaneNav,
     Copy,
 }
 
@@ -1319,7 +1323,10 @@ impl ClientShellState {
             } else if active_keymap_changed
                 && matches!(
                     self.mode,
-                    ClientShellMode::Prefix | ClientShellMode::Navigate | ClientShellMode::Resize
+                    ClientShellMode::Prefix
+                        | ClientShellMode::Navigate
+                        | ClientShellMode::Resize
+                        | ClientShellMode::PaneNav
                 )
             {
                 self.mode = ClientShellMode::Terminal;
