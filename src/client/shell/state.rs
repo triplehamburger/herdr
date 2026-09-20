@@ -81,6 +81,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) spaces: SpacesSidebarConfig,
     pub(super) agents: crate::config::AgentsSidebarConfig,
     pub(super) hidden_agent_tokens: std::collections::BTreeMap<String, String>,
+    pub(super) show_panes_without_agents: bool,
     pub(super) sidebar_mode: crate::config::SidebarModeConfig,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,

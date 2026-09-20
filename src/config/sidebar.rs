@@ -447,6 +447,11 @@ impl Default for SpacesSidebarConfig {
 pub struct SidebarConfig {
     pub agents: AgentsSidebarConfig,
     pub spaces: SpacesSidebarConfig,
+    /// Also list panes herdr has not detected an agent in, so plain shells and
+    /// plugin panes appear beside the agents in their space. Off by default,
+    /// because the sidebar's second level has always meant "agents".
+    #[serde(default)]
+    pub show_panes_without_agents: bool,
     /// Hide agent rows whose display-only metadata tokens match every pair here.
     /// Empty (the default) hides nothing. Lets an operator retire finished agents
     /// from the sidebar without closing their panes.

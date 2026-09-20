@@ -16,6 +16,10 @@ pub(super) struct AgentRow {
     pub(super) status: crate::api::schema::AgentStatus,
     pub(super) focused: bool,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
+    /// False for a pane herdr found no agent in. Those rows carry no agent name
+    /// to hide, so the unfocused-label trim must leave them alone or they render
+    /// as a bare status icon.
+    pub(super) has_agent: bool,
 }
 
 pub(super) fn ordered_agent_pane_ids(
@@ -209,7 +213,7 @@ pub(super) fn agent_rows(
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
 ) -> Vec<AgentRow> {
-    ordered_agent_pane_ids(snapshot, config.agent_panel_sort)
+    let mut rows: Vec<AgentRow> = ordered_agent_pane_ids(snapshot, config.agent_panel_sort)
         .into_iter()
         .filter_map(|pane_id| {
             let agent = snapshot
@@ -279,6 +283,76 @@ pub(super) fn agent_rows(
                 status: agent.agent_status,
                 focused: agent.focused,
                 rows,
+                has_agent: true,
+            })
+        })
+        .collect();
+    if config.show_panes_without_agents {
+        rows.extend(agentless_pane_rows(snapshot, config));
+    }
+    rows
+}
+
+/// Rows for panes herdr detected no agent in: plain shells, plugin panes, the
+/// empty pane a new workspace opens with. The configured agent row layout is
+/// reused so these look like their neighbours, but an agentless pane has no
+/// metadata tokens, so the agent slot falls back to the pane's own label.
+fn agentless_pane_rows(
+    snapshot: &ClientShellSnapshot,
+    config: &ClientShellConfig,
+) -> Vec<AgentRow> {
+    let empty = HashMap::new();
+    snapshot
+        .panes
+        .iter()
+        .filter(|pane| {
+            !snapshot
+                .agents
+                .iter()
+                .any(|agent| agent.pane_id == pane.pane_id)
+        })
+        .filter_map(|pane| {
+            let workspace = snapshot
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == pane.workspace_id)?;
+            let tab = snapshot.tabs.iter().find(|tab| tab.tab_id == pane.tab_id);
+            let tab_count = snapshot
+                .tabs
+                .iter()
+                .filter(|candidate| candidate.workspace_id == pane.workspace_id)
+                .count();
+            let tab_label = tab
+                .filter(|tab| tab_count > 1 || tab.custom_label)
+                .map(|tab| tab.label.as_str());
+            // Without a label there is nothing to identify the pane by but its
+            // id, which still beats an empty row.
+            let label = pane
+                .label
+                .as_deref()
+                .or(tab_label)
+                .unwrap_or(pane.pane_id.as_str());
+            let rows = crate::ui::sidebar_agent_rows(
+                &config.agents,
+                crate::ui::AgentTokenContext {
+                    workspace: &workspace.label,
+                    tab: tab_label,
+                    pane: Some(label),
+                    agent_label: Some(label),
+                    terminal_title: None,
+                    terminal_title_stripped: None,
+                    canonical_agent: None,
+                    tokens: &empty,
+                },
+                sidebar_status_text(crate::api::schema::AgentStatus::Unknown),
+            );
+            Some(AgentRow {
+                pane_id: pane.pane_id.clone(),
+                workspace_id: pane.workspace_id.clone(),
+                status: crate::api::schema::AgentStatus::Unknown,
+                focused: pane.focused,
+                rows,
+                has_agent: false,
             })
         })
         .collect()

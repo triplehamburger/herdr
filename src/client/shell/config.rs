@@ -110,6 +110,7 @@ impl ClientShellConfig {
             show_fork_strip: config.ui.show_fork_strip,
             spaces: config.ui.sidebar.spaces.clone(),
             hidden_agent_tokens: config.ui.sidebar.hidden_agent_tokens.clone(),
+            show_panes_without_agents: config.ui.sidebar.show_panes_without_agents,
             agents: if config.ui.sidebar_mode.is_unified() {
                 config.ui.sidebar.agents.clone().nested_defaults()
             } else {
@@ -319,6 +320,7 @@ impl ClientShellConfig {
                 self.show_fork_strip = ui.show_fork_strip;
                 self.spaces = ui.sidebar.spaces.clone();
                 self.hidden_agent_tokens = ui.sidebar.hidden_agent_tokens.clone();
+                self.show_panes_without_agents = ui.sidebar.show_panes_without_agents;
                 self.agents = if ui.sidebar_mode.is_unified() {
                     ui.sidebar.agents.clone().nested_defaults()
                 } else {

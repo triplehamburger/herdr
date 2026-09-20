@@ -325,3 +325,43 @@ fn the_footer_menu_label_is_not_clipped_by_the_collapse_chevron() {
         );
     }
 }
+
+/// A plain shell beside an agent: the sidebar's second level has always meant
+/// agents, so the shell appears only once the option asks for it.
+#[test]
+fn panes_without_agents_appear_only_when_enabled() {
+    let mut snapshot = nested_snapshot();
+    snapshot.panes.push(ClientShellPane {
+        pane_id: "pane_shell".into(),
+        workspace_id: "ws_2".into(),
+        tab_id: "tab_2".into(),
+        label: Some("scratch".into()),
+        cwd: Some("/other".into()),
+        foreground_cwd: Some("/other".into()),
+        focused: false,
+        right_click_passthrough: false,
+    });
+    let mut config = unified_config();
+
+    assert!(!config.show_panes_without_agents);
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    assert!(
+        rows.iter().all(|row| row.pane_id != "pane_shell"),
+        "an agentless pane must stay out of the sidebar by default"
+    );
+
+    config.show_panes_without_agents = true;
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let shell = rows
+        .iter()
+        .find(|row| row.pane_id == "pane_shell")
+        .expect("the agentless pane should have a row now");
+    assert!(!shell.has_agent, "it must not be mistaken for an agent");
+    assert_eq!(
+        shell.workspace_id, "ws_2",
+        "so it nests under its own space"
+    );
+    assert_eq!(shell.status, AgentStatus::Unknown);
+    // Every agent still has its row; the option adds, it never replaces.
+    assert_eq!(rows.iter().filter(|row| row.has_agent).count(), 3);
+}

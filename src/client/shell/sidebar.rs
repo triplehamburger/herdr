@@ -512,7 +512,9 @@ fn nested_agent_rows(
             .push(row);
     }
     for rows in by_space.values_mut() {
-        for row in rows.iter_mut() {
+        // An agentless pane row has no agent name to trim, and trimming it would
+        // leave nothing but the status icon on every unfocused row.
+        for row in rows.iter_mut().filter(|row| row.has_agent) {
             hide_unfocused_agent_label(row);
         }
     }
