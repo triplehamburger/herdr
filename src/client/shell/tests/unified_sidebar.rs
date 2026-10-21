@@ -326,21 +326,39 @@ fn the_footer_menu_label_is_not_clipped_by_the_collapse_chevron() {
     }
 }
 
-/// A plain shell beside an agent: the sidebar's second level has always meant
-/// agents, so the shell appears only once the option asks for it.
-#[test]
-fn panes_without_agents_appear_only_when_enabled() {
-    let mut snapshot = nested_snapshot();
+/// A tab of its own for an agentless pane: a pane sharing a tab with an agent is
+/// deliberately not listed, so these fixtures must not lean on tab_2.
+fn shell_pane(snapshot: &mut ClientShellSnapshot, tab_id: &str, pane_id: &str, label: &str) {
+    if !snapshot.tabs.iter().any(|tab| tab.tab_id == tab_id) {
+        snapshot.tabs.push(ClientShellTab {
+            tab_id: tab_id.into(),
+            workspace_id: "ws_2".into(),
+            number: snapshot.tabs.len() + 1,
+            label: tab_id.into(),
+            custom_label: false,
+            zoomed: false,
+            focused: false,
+            agent_status: AgentStatus::Idle,
+        });
+    }
     snapshot.panes.push(ClientShellPane {
-        pane_id: "pane_shell".into(),
+        pane_id: pane_id.into(),
         workspace_id: "ws_2".into(),
-        tab_id: "tab_2".into(),
-        label: Some("scratch".into()),
+        tab_id: tab_id.into(),
+        label: Some(label.into()),
         cwd: Some("/other".into()),
         foreground_cwd: Some("/other".into()),
         focused: false,
         right_click_passthrough: false,
     });
+}
+
+/// A plain shell beside an agent: the sidebar's second level has always meant
+/// agents, so the shell appears only once the option asks for it.
+#[test]
+fn panes_without_agents_appear_only_when_enabled() {
+    let mut snapshot = nested_snapshot();
+    shell_pane(&mut snapshot, "tab_shell", "pane_shell", "scratch");
     let mut config = unified_config();
 
     assert!(!config.show_panes_without_agents);
@@ -364,4 +382,82 @@ fn panes_without_agents_appear_only_when_enabled() {
     assert_eq!(shell.status, AgentStatus::Unknown);
     // Every agent still has its row; the option adds, it never replaces.
     assert_eq!(rows.iter().filter(|row| row.has_agent).count(), 3);
+}
+
+/// Pane rows get their own one-line layout, and a pane whose label is listed as
+/// hidden never appears — that is how a plugin-owned shell stays reachable only
+/// through the space that owns it.
+#[test]
+fn pane_rows_are_one_line_and_hidden_labels_are_skipped() {
+    let mut snapshot = nested_snapshot();
+    shell_pane(&mut snapshot, "tab_shell", "pane_shell", "scratch");
+    shell_pane(&mut snapshot, "tab_cmd", "pane_cmd", "cmd");
+    let mut config = unified_config();
+    config.show_panes_without_agents = true;
+    config.hidden_pane_labels = vec!["cmd".to_string()];
+
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let shell = rows
+        .iter()
+        .find(|row| row.pane_id == "pane_shell")
+        .expect("a plain shell still gets a row");
+    assert_eq!(shell.rows.len(), 1, "pane rows default to a single line");
+    assert!(
+        rows.iter().all(|row| row.pane_id != "pane_cmd"),
+        "a hidden label must keep the pane out of the sidebar entirely"
+    );
+    // Agent rows keep their own two-line layout; this option changed only panes.
+    let agent = rows.iter().find(|row| row.has_agent).unwrap();
+    assert_eq!(agent.rows.len(), 2);
+}
+
+/// A shell split beside an agent is that agent's tab, and the agent row already
+/// says so, so the pane gets no row of its own.
+#[test]
+fn a_pane_sharing_a_tab_with_an_agent_gets_no_row() {
+    let mut snapshot = nested_snapshot();
+    // tab_2 already holds beta-agent and gamma-agent.
+    snapshot.panes.push(ClientShellPane {
+        pane_id: "pane_split".into(),
+        workspace_id: "ws_2".into(),
+        tab_id: "tab_2".into(),
+        label: Some("shell".into()),
+        cwd: Some("/other".into()),
+        foreground_cwd: Some("/other".into()),
+        focused: false,
+        right_click_passthrough: false,
+    });
+    // A shell in a tab of its own is still listed.
+    snapshot.tabs.push(ClientShellTab {
+        tab_id: "tab_3".into(),
+        workspace_id: "ws_2".into(),
+        number: 2,
+        label: "2".into(),
+        custom_label: false,
+        zoomed: false,
+        focused: false,
+        agent_status: AgentStatus::Idle,
+    });
+    snapshot.panes.push(ClientShellPane {
+        pane_id: "pane_alone".into(),
+        workspace_id: "ws_2".into(),
+        tab_id: "tab_3".into(),
+        label: Some("alone".into()),
+        cwd: Some("/other".into()),
+        foreground_cwd: Some("/other".into()),
+        focused: false,
+        right_click_passthrough: false,
+    });
+    let mut config = unified_config();
+    config.show_panes_without_agents = true;
+
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    assert!(
+        rows.iter().all(|row| row.pane_id != "pane_split"),
+        "a pane split beside an agent must not get its own row"
+    );
+    assert!(
+        rows.iter().any(|row| row.pane_id == "pane_alone"),
+        "a pane in its own tab is still listed"
+    );
 }

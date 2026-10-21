@@ -452,11 +452,38 @@ pub struct SidebarConfig {
     /// because the sidebar's second level has always meant "agents".
     #[serde(default)]
     pub show_panes_without_agents: bool,
+    /// Row layout for the panes `show_panes_without_agents` adds. Separate from
+    /// `agents` because those rows carry no agent and no metadata tokens, so the
+    /// agent layout would leave most of their slots empty.
+    #[serde(default)]
+    pub panes: PanesSidebarConfig,
+    /// Never list a pane whose own label, or whose tab label, appears here. Meant
+    /// for panes a plugin owns and reaches by its own route, which would only be
+    /// noise as a sidebar row.
+    #[serde(default)]
+    pub hidden_pane_labels: Vec<String>,
     /// Hide agent rows whose display-only metadata tokens match every pair here.
     /// Empty (the default) hides nothing. Lets an operator retire finished agents
     /// from the sidebar without closing their panes.
     #[serde(default)]
     pub hidden_agent_tokens: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PanesSidebarConfig {
+    #[serde(deserialize_with = "deserialize_sidebar_rows")]
+    pub rows: AgentSidebarRows,
+}
+
+impl Default for PanesSidebarConfig {
+    /// One line: a pane with no agent has a label and a status and nothing else,
+    /// so a second row would always be blank.
+    fn default() -> Self {
+        Self {
+            rows: vec![vec![AgentSidebarToken::StateIcon, AgentSidebarToken::Pane]],
+        }
+    }
 }
 
 #[cfg(test)]

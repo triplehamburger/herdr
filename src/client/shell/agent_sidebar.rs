@@ -302,14 +302,23 @@ fn agentless_pane_rows(
     config: &ClientShellConfig,
 ) -> Vec<AgentRow> {
     let empty = HashMap::new();
+    // sidebar_agent_rows takes the agent config shape, so present the pane row
+    // layout in it rather than duplicating the renderer.
+    let panes_config = crate::config::AgentsSidebarConfig {
+        rows: config.panes.rows.clone(),
+        ..Default::default()
+    };
     snapshot
         .panes
         .iter()
         .filter(|pane| {
+            // A pane sharing its tab with an agent is already represented by
+            // that agent's row, which carries its own mark for the split. Listing
+            // the pane too would say the same thing twice.
             !snapshot
                 .agents
                 .iter()
-                .any(|agent| agent.pane_id == pane.pane_id)
+                .any(|agent| agent.pane_id == pane.pane_id || agent.tab_id == pane.tab_id)
         })
         .filter_map(|pane| {
             let workspace = snapshot
@@ -332,8 +341,13 @@ fn agentless_pane_rows(
                 .as_deref()
                 .or(tab_label)
                 .unwrap_or(pane.pane_id.as_str());
+            if config.hidden_pane_labels.iter().any(|hidden| {
+                Some(hidden.as_str()) == pane.label.as_deref() || Some(hidden.as_str()) == tab_label
+            }) {
+                return None;
+            }
             let rows = crate::ui::sidebar_agent_rows(
-                &config.agents,
+                &panes_config,
                 crate::ui::AgentTokenContext {
                     workspace: &workspace.label,
                     tab: tab_label,

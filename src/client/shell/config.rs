@@ -111,6 +111,8 @@ impl ClientShellConfig {
             spaces: config.ui.sidebar.spaces.clone(),
             hidden_agent_tokens: config.ui.sidebar.hidden_agent_tokens.clone(),
             show_panes_without_agents: config.ui.sidebar.show_panes_without_agents,
+            panes: config.ui.sidebar.panes.clone(),
+            hidden_pane_labels: config.ui.sidebar.hidden_pane_labels.clone(),
             agents: if config.ui.sidebar_mode.is_unified() {
                 config.ui.sidebar.agents.clone().nested_defaults()
             } else {
@@ -321,6 +323,8 @@ impl ClientShellConfig {
                 self.spaces = ui.sidebar.spaces.clone();
                 self.hidden_agent_tokens = ui.sidebar.hidden_agent_tokens.clone();
                 self.show_panes_without_agents = ui.sidebar.show_panes_without_agents;
+                self.panes = ui.sidebar.panes.clone();
+                self.hidden_pane_labels = ui.sidebar.hidden_pane_labels.clone();
                 self.agents = if ui.sidebar_mode.is_unified() {
                     ui.sidebar.agents.clone().nested_defaults()
                 } else {
