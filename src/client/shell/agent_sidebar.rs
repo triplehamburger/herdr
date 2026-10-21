@@ -302,12 +302,6 @@ fn agentless_pane_rows(
     config: &ClientShellConfig,
 ) -> Vec<AgentRow> {
     let empty = HashMap::new();
-    // sidebar_agent_rows takes the agent config shape, so present the pane row
-    // layout in it rather than duplicating the renderer.
-    let panes_config = crate::config::AgentsSidebarConfig {
-        rows: config.panes.rows.clone(),
-        ..Default::default()
-    };
     snapshot
         .panes
         .iter()
@@ -347,7 +341,7 @@ fn agentless_pane_rows(
                 return None;
             }
             let rows = crate::ui::sidebar_agent_rows(
-                &panes_config,
+                &config.panes,
                 crate::ui::AgentTokenContext {
                     workspace: &workspace.label,
                     tab: tab_label,

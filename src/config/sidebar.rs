@@ -486,6 +486,18 @@ impl Default for PanesSidebarConfig {
     }
 }
 
+impl PanesSidebarConfig {
+    /// The same layout in the agent config shape, because pane rows are drawn by
+    /// the agent row renderer rather than a duplicate of it. Built once when the
+    /// client config is loaded; the sidebar render path must not clone per frame.
+    pub fn row_layout(&self) -> AgentsSidebarConfig {
+        AgentsSidebarConfig {
+            rows: self.rows.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

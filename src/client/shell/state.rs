@@ -82,7 +82,9 @@ pub(crate) struct ClientShellConfig {
     pub(super) agents: crate::config::AgentsSidebarConfig,
     pub(super) hidden_agent_tokens: std::collections::BTreeMap<String, String>,
     pub(super) show_panes_without_agents: bool,
-    pub(super) panes: crate::config::PanesSidebarConfig,
+    /// Pane rows reuse the agent row renderer, so the configured pane layout
+    /// is kept in its shape, built once instead of per sidebar render.
+    pub(super) panes: crate::config::AgentsSidebarConfig,
     pub(super) hidden_pane_labels: Vec<String>,
     pub(super) sidebar_mode: crate::config::SidebarModeConfig,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
