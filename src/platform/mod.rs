@@ -232,6 +232,38 @@ pub(crate) fn begin_cli_output() {}
 #[cfg(not(unix))]
 pub(crate) fn end_cli_output() {}
 
+/// Which GPU utilisation figure the host reports.
+///
+/// Apple exposes several in one place and they do not mean the same thing, so the
+/// choice is a calibration knob rather than an implementation detail. Measured on an
+/// M5 Max: `Device` sat at 99-100% for twenty seconds while a resident compute
+/// context did nothing, where `Renderer` moved between 15% and 31% with real work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GpuUtilizationSource {
+    /// Render work only. Tracks visible load and ignores compute, so a local model
+    /// loaded on the GPU does not show up here.
+    #[default]
+    Renderer,
+    /// How long the GPU was occupied at all, compute included. Answers "is the GPU
+    /// claimed" rather than "is it busy", and pins near 100% while a model is resident.
+    Device,
+}
+
+/// Raw host resource counters for the client-local readout.
+///
+/// Counters, not percentages: CPU is only meaningful as a delta between two samples,
+/// so the arithmetic lives in the client where it is testable without a host to
+/// sample. A field a platform cannot read is left at zero, and `gpu_percent` is
+/// `None` wherever no GPU figure is available at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HostResourceCounters {
+    pub cpu_busy_ticks: u64,
+    pub cpu_total_ticks: u64,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub gpu_percent: Option<u8>,
+}
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]

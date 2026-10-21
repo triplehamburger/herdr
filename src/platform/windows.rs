@@ -4041,3 +4041,12 @@ mod tests {
         }
     }
 }
+
+/// Not sampled on Windows yet, so the readout stays hidden there. CPU and memory
+/// would come from `GetSystemTimes` and `GlobalMemoryStatusEx`, and GPU from the
+/// `GPU Engine` performance counters, none of which this prototype links.
+pub fn host_resource_counters(
+    _gpu: super::GpuUtilizationSource,
+) -> Option<super::HostResourceCounters> {
+    None
+}

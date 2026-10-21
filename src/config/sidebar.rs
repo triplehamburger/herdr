@@ -467,6 +467,38 @@ pub struct SidebarConfig {
     /// from the sidebar without closing their panes.
     #[serde(default)]
     pub hidden_agent_tokens: std::collections::BTreeMap<String, String>,
+    pub host_resources: HostResourcesSidebarConfig,
+}
+
+/// A readout of the machine this client runs on, drawn at the bottom of the
+/// sidebar. Off by default: the sidebar has always been about sessions, and these
+/// rows cost height that panes would otherwise have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct HostResourcesSidebarConfig {
+    pub enabled: bool,
+    pub gpu_source: GpuSourceConfig,
+}
+
+/// Which GPU figure to read, where a platform publishes more than one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuSourceConfig {
+    /// Render work only. Default, because it tracks load that changes.
+    #[default]
+    Renderer,
+    /// Any occupancy, compute included. Reads near 100% while a local model is
+    /// resident on the GPU, whether or not it is doing anything.
+    Device,
+}
+
+impl From<GpuSourceConfig> for crate::platform::GpuUtilizationSource {
+    fn from(source: GpuSourceConfig) -> Self {
+        match source {
+            GpuSourceConfig::Renderer => Self::Renderer,
+            GpuSourceConfig::Device => Self::Device,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

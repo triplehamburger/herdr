@@ -74,6 +74,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) sidebar_max_width: u16,
     pub(super) sidebar_start_collapsed: bool,
     pub(super) sidebar_collapsed_mode: SidebarCollapsedModeConfig,
+    pub(super) host_resources: crate::config::HostResourcesSidebarConfig,
     pub(super) mobile_width_threshold: u16,
     pub(super) tab_bar_position: TabBarPositionConfig,
     pub(super) hide_tab_bar_when_single_tab: bool,
@@ -120,6 +121,9 @@ pub(crate) struct ClientShellConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ClientShellLayout {
     pub sidebar: Rect,
+    /// Rows taken off the bottom of the sidebar for the host readout, empty when it
+    /// is off or the sidebar is too short to give them up.
+    pub host_resources: Rect,
     pub tab_bar: Rect,
     pub fork_bar: Rect,
     pub mobile_header: Rect,
@@ -881,6 +885,7 @@ pub(crate) struct ClientShellState {
     pub(super) popup_terminal_id: Option<String>,
     pub(super) sidebar_collapsed: bool,
     pub(super) sidebar_collapsed_manual: bool,
+    pub(super) host_resources: super::host_resources::HostResourceMonitor,
     pub(super) sidebar_width: u16,
     pub(super) sidebar_width_manual: bool,
     pub(super) sidebar_section_split: f32,
@@ -1021,6 +1026,7 @@ impl ClientShellState {
                 height_px: 1,
             },
             popup_terminal_id: None,
+            host_resources: super::host_resources::HostResourceMonitor::default(),
             sidebar_collapsed,
             sidebar_collapsed_manual: preferences.sidebar_collapsed.is_some(),
             sidebar_width,

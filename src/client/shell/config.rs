@@ -104,6 +104,7 @@ impl ClientShellConfig {
             sidebar_max_width: config.ui.sidebar_max_width,
             sidebar_start_collapsed: config.ui.sidebar_start_collapsed,
             sidebar_collapsed_mode: config.ui.sidebar_collapsed_mode,
+            host_resources: config.ui.sidebar.host_resources,
             mobile_width_threshold: config.ui.mobile_width_threshold,
             tab_bar_position: config.ui.tab_bar_position,
             hide_tab_bar_when_single_tab: config.ui.hide_tab_bar_when_single_tab,
@@ -316,6 +317,7 @@ impl ClientShellConfig {
                 self.sidebar_min_width = ui.sidebar_min_width;
                 self.sidebar_max_width = ui.sidebar_max_width;
                 self.sidebar_collapsed_mode = ui.sidebar_collapsed_mode;
+                self.host_resources = ui.sidebar.host_resources;
                 self.mobile_width_threshold = ui.mobile_width_threshold;
                 self.tab_bar_position = ui.tab_bar_position;
                 self.hide_tab_bar_when_single_tab = ui.hide_tab_bar_when_single_tab;
@@ -376,6 +378,7 @@ impl ClientShellConfig {
             let header_height = rows.min(2);
             return ClientShellLayout {
                 sidebar: Rect::default(),
+                host_resources: Rect::default(),
                 tab_bar: Rect::default(),
                 fork_bar: Rect::default(),
                 mobile_header: Rect::new(0, 0, cols, header_height),
@@ -452,8 +455,15 @@ impl ClientShellConfig {
             }
         };
 
+        // The readout takes rows from the bottom of the sidebar, and only when the
+        // sidebar can still show something above them.
+        let sidebar = Rect::new(0, 0, sidebar_width, rows);
+        let (sidebar, host_resources) =
+            split_host_resources(sidebar, self.host_resources.enabled, sidebar_collapsed);
+
         ClientShellLayout {
-            sidebar: Rect::new(0, 0, sidebar_width, rows),
+            sidebar,
+            host_resources,
             tab_bar,
             fork_bar,
             mobile_header: Rect::default(),
@@ -609,4 +619,70 @@ mod tests {
             (KeyCode::Char('x'), KeyModifiers::CONTROL)
         );
     }
+    #[test]
+    fn the_host_readout_takes_rows_from_the_bottom_of_the_sidebar() {
+        let sidebar = Rect::new(0, 0, 20, 30);
+
+        // Off by default: the sidebar keeps every row.
+        let (kept, strip) = split_host_resources(sidebar, false, false);
+        assert_eq!(kept, sidebar);
+        assert_eq!(strip, Rect::default());
+
+        // On: the strip sits against the bottom edge and the sidebar gives up
+        // exactly its rows, with no gap and no overlap.
+        let (kept, strip) = split_host_resources(sidebar, true, false);
+        assert_eq!(
+            kept,
+            Rect::new(0, 0, 20, 30 - super::super::host_resources::STRIP_ROWS)
+        );
+        assert_eq!(strip.bottom(), sidebar.bottom());
+        assert_eq!(strip.y, kept.bottom());
+        assert_eq!(strip.height, super::super::host_resources::STRIP_ROWS);
+        assert_eq!(strip.width, sidebar.width);
+
+        // Collapsed sidebars get the one-row form.
+        let (kept, strip) = split_host_resources(Rect::new(0, 0, 4, 30), true, true);
+        assert_eq!(strip.height, super::super::host_resources::COMPACT_ROWS);
+        assert_eq!(kept.height, 30 - super::super::host_resources::COMPACT_ROWS);
+
+        // Too short to spare the rows: sessions win and the readout is dropped
+        // rather than squeezed into a partial strip.
+        let short = Rect::new(0, 0, 20, super::super::host_resources::STRIP_ROWS + 2);
+        let (kept, strip) = split_host_resources(short, true, false);
+        assert_eq!(kept, short);
+        assert_eq!(strip, Rect::default());
+
+        // A hidden sidebar has no columns to draw into.
+        let (kept, strip) = split_host_resources(Rect::new(0, 0, 0, 30), true, false);
+        assert_eq!(kept.width, 0);
+        assert_eq!(strip, Rect::default());
+    }
+}
+
+/// Split the sidebar into the part that lists sessions and the rows the host
+/// readout gets at the bottom. The readout is dropped rather than shrunk when the
+/// sidebar cannot spare its rows, so a short window keeps showing sessions.
+pub(super) fn split_host_resources(sidebar: Rect, enabled: bool, collapsed: bool) -> (Rect, Rect) {
+    const MIN_SESSION_ROWS: u16 = 3;
+    if !enabled || sidebar.width == 0 {
+        return (sidebar, Rect::default());
+    }
+    let wanted = if collapsed {
+        super::host_resources::COMPACT_ROWS
+    } else {
+        super::host_resources::STRIP_ROWS
+    };
+    if sidebar.height < wanted.saturating_add(MIN_SESSION_ROWS) {
+        return (sidebar, Rect::default());
+    }
+    let kept = sidebar.height.saturating_sub(wanted);
+    (
+        Rect::new(sidebar.x, sidebar.y, sidebar.width, kept),
+        Rect::new(
+            sidebar.x,
+            sidebar.y.saturating_add(kept),
+            sidebar.width,
+            wanted,
+        ),
+    )
 }

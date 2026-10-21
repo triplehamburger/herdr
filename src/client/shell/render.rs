@@ -220,6 +220,7 @@ pub(super) struct ShellRenderState<'a> {
     pub(super) selected_workspace_id: Option<&'a str>,
     pub(super) dragged_workspace_id: Option<&'a str>,
     pub(super) workspace_drop_indicator_row: Option<u16>,
+    pub(super) host_resources: &'a super::host_resources::HostResourceMonitor,
 }
 
 pub(super) fn render_shell(
@@ -257,6 +258,24 @@ pub(super) fn render_shell(
                 config,
                 &mut state,
                 &mut hits,
+            );
+        }
+    }
+    if layout.host_resources.height > 0 {
+        sidebar::render_sidebar_background(buffer, layout.host_resources, &config.palette);
+        if state.sidebar_collapsed {
+            super::host_resources::render_host_resources_compact(
+                buffer,
+                layout.host_resources,
+                state.host_resources,
+                &config.palette,
+            );
+        } else {
+            super::host_resources::render_host_resources(
+                buffer,
+                layout.host_resources,
+                state.host_resources,
+                &config.palette,
             );
         }
     }

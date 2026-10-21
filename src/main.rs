@@ -354,6 +354,15 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # row_gap = 0
 # rows = [["state_icon", "workspace"], ["branch", "git_status"]]
 
+# CPU, memory and GPU of the machine this client runs on, at the bottom of the
+# sidebar. Off by default; the rows come out of the sidebar's own height.
+# [ui.sidebar.host_resources]
+# enabled = false
+# Which GPU figure to read where a platform publishes several. "renderer" is
+# render work only; "device" counts any occupancy, so it reads near 100% while a
+# local model sits resident on the GPU.
+# gpu_source = "renderer"
+
 # Accent color for highlights, borders, and navigation UI.
 # Accepts: hex (#89b4fa), named colors (cyan, blue, magenta), or rgb(r,g,b)
 # accent = "cyan"

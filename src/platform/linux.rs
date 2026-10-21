@@ -1563,3 +1563,110 @@ mod tests {
         assert!(argv[2].contains("/tmp/herdr scrollback.txt"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Host resource counters
+// ---------------------------------------------------------------------------
+
+/// CPU tick counters from the aggregate line of `/proc/stat`, as (busy, total).
+/// iowait counts as idle: a core waiting on disk is not doing work.
+fn cpu_ticks(stat: &str) -> Option<(u64, u64)> {
+    let fields = stat.lines().next()?.strip_prefix("cpu ")?;
+    let ticks: Vec<u64> = fields
+        .split_whitespace()
+        .filter_map(|field| field.parse().ok())
+        .collect();
+    if ticks.len() < 5 {
+        return None;
+    }
+    let total: u64 = ticks.iter().sum();
+    let resting = ticks[3].saturating_add(ticks[4]);
+    Some((total.saturating_sub(resting), total))
+}
+
+/// Memory in use, as (used, total) bytes, from `/proc/meminfo`. Used is total minus
+/// available, which is what the kernel reports as reclaimable, so cache does not
+/// read as pressure.
+fn memory_bytes(meminfo: &str) -> Option<(u64, u64)> {
+    let field = |name: &str| -> Option<u64> {
+        meminfo
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.trim().strip_suffix(" kB"))
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map(|kb| kb.saturating_mul(1024))
+    };
+    let total = field("MemTotal:")?;
+    let available = field("MemAvailable:").unwrap_or(0);
+    Some((total.saturating_sub(available), total))
+}
+
+/// GPU busy percentage, where the driver exposes one. AMD and some Intel parts
+/// publish `gpu_busy_percent` in sysfs; NVIDIA does not, so it reads as no GPU.
+fn gpu_percent() -> Option<u8> {
+    let cards = std::fs::read_dir("/sys/class/drm").ok()?;
+    for card in cards.flatten() {
+        let path = card.path().join("device/gpu_busy_percent");
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(percent) = text.trim().parse::<u8>() {
+                return Some(percent.min(100));
+            }
+        }
+    }
+    None
+}
+
+/// Sample the host's CPU, memory and GPU for the client-local readout. The GPU
+/// source is ignored: Linux drivers publish one busy figure, not Apple's several.
+pub fn host_resource_counters(
+    _gpu: super::GpuUtilizationSource,
+) -> Option<super::HostResourceCounters> {
+    let stat = std::fs::read_to_string("/proc/stat").ok()?;
+    let (cpu_busy_ticks, cpu_total_ticks) = cpu_ticks(&stat)?;
+    let (memory_used_bytes, memory_total_bytes) = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|meminfo| memory_bytes(&meminfo))
+        .unwrap_or((0, 0));
+    Some(super::HostResourceCounters {
+        cpu_busy_ticks,
+        cpu_total_ticks,
+        memory_used_bytes,
+        memory_total_bytes,
+        gpu_percent: gpu_percent(),
+    })
+}
+
+#[cfg(test)]
+mod host_resource_tests {
+    use super::*;
+
+    #[test]
+    fn proc_stat_and_meminfo_are_parsed() {
+        let (busy, total) = cpu_ticks("cpu  100 20 30 500 50 0 0 0 0 0\ncpu0 1 2 3 4 5\n")
+            .expect("the aggregate line parses");
+        assert_eq!(total, 700);
+        assert_eq!(busy, 150, "idle and iowait both count as resting");
+        assert_eq!(
+            cpu_ticks("cpu  1 2\n"),
+            None,
+            "a short line is not a sample"
+        );
+        assert_eq!(
+            cpu_ticks("intr 1 2 3\n"),
+            None,
+            "the cpu line must come first"
+        );
+
+        let (used, total) =
+            memory_bytes("MemTotal:  2048 kB\nMemFree: 512 kB\nMemAvailable: 1024 kB\n")
+                .expect("meminfo parses");
+        assert_eq!(total, 2048 * 1024);
+        assert_eq!(used, 1024 * 1024, "used is total minus available");
+        let (used, total) = memory_bytes("MemTotal:  2048 kB\n").expect("MemTotal alone is enough");
+        assert_eq!((used, total), (2048 * 1024, 2048 * 1024));
+        assert_eq!(
+            memory_bytes("MemFree: 512 kB\n"),
+            None,
+            "no total, no sample"
+        );
+    }
+}

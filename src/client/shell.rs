@@ -9,6 +9,7 @@ mod copy_mode;
 mod forks;
 mod global_menu;
 mod graphics;
+mod host_resources;
 mod input;
 mod mobile;
 mod mouse;

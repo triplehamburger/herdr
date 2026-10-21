@@ -76,6 +76,16 @@ fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+/// The host port for this task.
+///
+/// `mach_host_self` is deprecated in libc in favour of the mach2 crate. Calling it
+/// here keeps the sampler to the dependencies herdr already has, for one lookup.
+#[allow(deprecated)]
+fn mach_host() -> libc::mach_port_t {
+    // SAFETY: no safety requirement; this returns the host port for the task.
+    unsafe { libc::mach_host_self() }
+}
+
 #[repr(C)]
 struct TisInputSource {
     _private: [u8; 0],
@@ -1214,5 +1224,262 @@ printf '%s\n' "$@" > "$HERDR_NOTIFY_ARGS"
         assert_eq!(argv[1], "-c");
         assert!(argv[2].contains("EDITOR:-vi"));
         assert!(argv[2].contains("/tmp/herdr scrollback.txt"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Host resource counters
+// ---------------------------------------------------------------------------
+
+const CF_NUMBER_SINT64_TYPE: libc::c_int = 4;
+const CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+const HOST_CPU_LOAD_INFO_COUNT: libc::mach_msg_type_number_t = 4;
+/// `kIOMainPortDefault` is NULL, which `IOServiceGetMatchingService` reads as
+/// "the default port", so no port has to be looked up first.
+const IO_MAIN_PORT_DEFAULT: libc::mach_port_t = 0;
+
+type IoObject = libc::mach_port_t;
+type CfDictionaryRef = *const libc::c_void;
+type CfMutableDictionaryRef = *mut libc::c_void;
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    #[link_name = "CFStringCreateWithCString"]
+    fn cf_string_create_with_cstring(
+        allocator: CfTypeRef,
+        cstr: *const libc::c_char,
+        encoding: u32,
+    ) -> CfStringRef;
+
+    #[link_name = "CFDictionaryGetValue"]
+    fn cf_dictionary_get_value(dictionary: CfDictionaryRef, key: CfTypeRef) -> CfTypeRef;
+
+    #[link_name = "CFNumberGetValue"]
+    fn cf_number_get_value(
+        number: CfTypeRef,
+        the_type: libc::c_int,
+        value_ptr: *mut i64,
+    ) -> Boolean;
+}
+
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    #[link_name = "IOServiceMatching"]
+    fn io_service_matching(name: *const libc::c_char) -> CfMutableDictionaryRef;
+
+    #[link_name = "IOServiceGetMatchingService"]
+    fn io_service_get_matching_service(
+        main_port: libc::mach_port_t,
+        matching: CfMutableDictionaryRef,
+    ) -> IoObject;
+
+    #[link_name = "IORegistryEntryCreateCFProperties"]
+    fn io_registry_entry_create_cf_properties(
+        entry: IoObject,
+        properties: *mut CfMutableDictionaryRef,
+        allocator: CfTypeRef,
+        options: u32,
+    ) -> libc::c_int;
+
+    #[link_name = "IOObjectRelease"]
+    fn io_object_release(object: IoObject) -> libc::c_int;
+}
+
+/// Hold a CoreFoundation value and release it on drop, so an early return cannot
+/// leak it.
+struct CfOwned(CfTypeRef);
+
+impl Drop for CfOwned {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: the pointer came from a Create/Copy call, so this owns one
+            // reference, and a null pointer is never passed.
+            unsafe { cf_release(self.0) };
+        }
+    }
+}
+
+fn cf_string(value: &std::ffi::CStr) -> Option<CfOwned> {
+    // SAFETY: the string is a valid NUL-terminated C string and the default
+    // allocator is requested with a null pointer.
+    let created = unsafe {
+        cf_string_create_with_cstring(std::ptr::null(), value.as_ptr(), CF_STRING_ENCODING_UTF8)
+    };
+    (!created.is_null()).then_some(CfOwned(created))
+}
+
+/// Read one integer out of a CoreFoundation dictionary.
+fn cf_dictionary_i64(dictionary: CfDictionaryRef, key: &std::ffi::CStr) -> Option<i64> {
+    if dictionary.is_null() {
+        return None;
+    }
+    let key = cf_string(key)?;
+    // SAFETY: both pointers are non-null and the dictionary is still owned by the
+    // caller, so the borrowed value stays alive for this call.
+    let value = unsafe { cf_dictionary_get_value(dictionary, key.0) };
+    if value.is_null() {
+        return None;
+    }
+    let mut out: i64 = 0;
+    // SAFETY: `out` is a valid i64 and the requested type matches it. A false
+    // return means the value was not a number, which is handled below.
+    let ok = unsafe { cf_number_get_value(value, CF_NUMBER_SINT64_TYPE, &mut out) };
+    (ok != 0).then_some(out)
+}
+
+/// GPU utilisation as a whole percentage, from the accelerator's
+/// `PerformanceStatistics` dictionary in the IO registry. Readable without
+/// elevated privileges, unlike `powermetrics`.
+fn gpu_percent(source: super::GpuUtilizationSource) -> Option<u8> {
+    let key: &std::ffi::CStr = match source {
+        super::GpuUtilizationSource::Renderer => c"Renderer Utilization %",
+        super::GpuUtilizationSource::Device => c"Device Utilization %",
+    };
+    // SAFETY: a valid C string names the service class; a null return is handled by
+    // IOServiceGetMatchingService, which consumes the dictionary either way.
+    let matching = unsafe { io_service_matching(c"IOAccelerator".as_ptr()) };
+    if matching.is_null() {
+        return None;
+    }
+    // SAFETY: this consumes `matching`, so it must not be released here.
+    let service = unsafe { io_service_get_matching_service(IO_MAIN_PORT_DEFAULT, matching) };
+    if service == 0 {
+        return None;
+    }
+    let mut properties: CfMutableDictionaryRef = std::ptr::null_mut();
+    // SAFETY: `service` is a live registry entry and `properties` receives an owned
+    // dictionary on success.
+    let result = unsafe {
+        io_registry_entry_create_cf_properties(service, &mut properties, std::ptr::null(), 0)
+    };
+    // SAFETY: `service` is live and released exactly once.
+    unsafe { io_object_release(service) };
+    if result != 0 || properties.is_null() {
+        return None;
+    }
+    let properties = CfOwned(properties as CfTypeRef);
+    // The statistics are nested one dictionary down, borrowed from `properties`.
+    let statistics = cf_string(c"PerformanceStatistics").and_then(|name| {
+        // SAFETY: both pointers are non-null and `properties` outlives the borrow.
+        let nested = unsafe { cf_dictionary_get_value(properties.0, name.0) };
+        (!nested.is_null()).then_some(nested)
+    })?;
+    let percent = cf_dictionary_i64(statistics, key)?;
+    u8::try_from(percent.clamp(0, 100)).ok()
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct HostCpuLoadInfo {
+    cpu_ticks: [libc::natural_t; 4],
+}
+
+/// CPU tick counters since boot, as (busy, total).
+fn cpu_ticks() -> Option<(u64, u64)> {
+    let mut info = HostCpuLoadInfo::default();
+    let mut count = HOST_CPU_LOAD_INFO_COUNT;
+    // SAFETY: the struct matches host_cpu_load_info and `count` states its size in
+    // natural_t units, which is what host_statistics expects.
+    let result = unsafe {
+        libc::host_statistics(
+            mach_host(),
+            libc::HOST_CPU_LOAD_INFO,
+            std::ptr::addr_of_mut!(info).cast(),
+            &mut count,
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    let total: u64 = info.cpu_ticks.iter().map(|ticks| u64::from(*ticks)).sum();
+    let idle = u64::from(info.cpu_ticks[libc::CPU_STATE_IDLE as usize]);
+    Some((total.saturating_sub(idle), total))
+}
+
+/// Memory in use, as (used, total) bytes. Used counts the pages Activity Monitor
+/// counts: resident, wired and compressed.
+fn memory_bytes() -> Option<(u64, u64)> {
+    let mut total: u64 = 0;
+    let mut size = std::mem::size_of::<u64>();
+    // SAFETY: the name is a valid C string and the output buffer matches `size`.
+    let result = unsafe {
+        libc::sysctlbyname(
+            c"hw.memsize".as_ptr(),
+            std::ptr::addr_of_mut!(total).cast(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if result != 0 || total == 0 {
+        return None;
+    }
+
+    let mut vm = std::mem::MaybeUninit::<libc::vm_statistics64>::zeroed();
+    let mut count = libc::HOST_VM_INFO64_COUNT;
+    // SAFETY: the buffer is a zeroed vm_statistics64 and `count` states its size in
+    // natural_t units.
+    let result = unsafe {
+        libc::host_statistics64(
+            mach_host(),
+            libc::HOST_VM_INFO64,
+            vm.as_mut_ptr().cast(),
+            &mut count,
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    // SAFETY: host_statistics64 reported success, so the struct is initialised.
+    let vm = unsafe { vm.assume_init() };
+    // SAFETY: no safety requirement; sysconf is a plain libc call.
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    let page_size = u64::try_from(page_size).ok().filter(|size| *size > 0)?;
+    let pages = u64::from(vm.active_count)
+        .saturating_add(u64::from(vm.wire_count))
+        .saturating_add(u64::from(vm.compressor_page_count));
+    Some((pages.saturating_mul(page_size).min(total), total))
+}
+
+/// Sample the host's CPU, memory and GPU for the client-local readout.
+pub fn host_resource_counters(
+    gpu: super::GpuUtilizationSource,
+) -> Option<super::HostResourceCounters> {
+    let (cpu_busy_ticks, cpu_total_ticks) = cpu_ticks()?;
+    let (memory_used_bytes, memory_total_bytes) = memory_bytes().unwrap_or((0, 0));
+    Some(super::HostResourceCounters {
+        cpu_busy_ticks,
+        cpu_total_ticks,
+        memory_used_bytes,
+        memory_total_bytes,
+        gpu_percent: gpu_percent(gpu),
+    })
+}
+
+#[cfg(test)]
+mod host_resource_tests {
+    use super::*;
+
+    #[test]
+    fn host_counters_are_plausible_on_this_machine() {
+        let Some(sample) = host_resource_counters(super::super::GpuUtilizationSource::Renderer)
+        else {
+            panic!("macOS should always report host counters");
+        };
+        // Printed so the numbers can be compared against ioreg and sysctl by hand:
+        // this is hardware, and the only way to know a reading is right is to look.
+        eprintln!("host sample: {sample:?}");
+        assert!(sample.cpu_total_ticks > 0, "boot ticks must accumulate");
+        assert!(sample.cpu_busy_ticks <= sample.cpu_total_ticks);
+        assert!(
+            sample.memory_total_bytes >= 1 << 30,
+            "a Mac has at least a gigabyte of memory: {}",
+            sample.memory_total_bytes
+        );
+        assert!(sample.memory_used_bytes > 0);
+        assert!(sample.memory_used_bytes <= sample.memory_total_bytes);
+        if let Some(percent) = sample.gpu_percent {
+            assert!(percent <= 100);
+        }
     }
 }
