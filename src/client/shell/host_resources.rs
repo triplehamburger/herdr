@@ -44,13 +44,15 @@ pub(crate) struct HostResourceReadout {
 }
 
 /// Samples the host on a fixed interval and keeps the last readout plus a short
-/// CPU history.
+/// history of each metric.
 #[derive(Debug, Default)]
 pub(crate) struct HostResourceMonitor {
     previous: Option<HostResourceCounters>,
     sampled_at: Option<Instant>,
     readout: HostResourceReadout,
     cpu_history: VecDeque<u8>,
+    memory_history: VecDeque<u8>,
+    gpu_history: VecDeque<u8>,
 }
 
 impl HostResourceMonitor {
@@ -69,12 +71,9 @@ impl HostResourceMonitor {
         };
         let readout = Self::readout_from(self.previous, current);
         self.previous = Some(current);
-        if let Some(cpu) = readout.cpu_percent {
-            if self.cpu_history.len() >= HISTORY_SAMPLES {
-                self.cpu_history.pop_front();
-            }
-            self.cpu_history.push_back(cpu);
-        }
+        push_sample(&mut self.cpu_history, readout.cpu_percent);
+        push_sample(&mut self.memory_history, readout.memory_percent);
+        push_sample(&mut self.gpu_history, readout.gpu_percent);
         let changed = readout != self.readout;
         self.readout = readout;
         changed
@@ -126,6 +125,19 @@ impl ClientShellState {
         let source = GpuUtilizationSource::from(self.config.host_resources.gpu_source);
         self.host_resources.sample(now, source)
     }
+}
+
+/// Record a sample, dropping the oldest once the window is full. A metric the
+/// platform could not read records nothing, so its sparkline stays empty rather
+/// than filling with zeroes it never measured.
+fn push_sample(history: &mut VecDeque<u8>, percent: Option<u8>) {
+    let Some(percent) = percent else {
+        return;
+    };
+    if history.len() >= HISTORY_SAMPLES {
+        history.pop_front();
+    }
+    history.push_back(percent);
 }
 
 fn percent_of(part: u64, whole: u64) -> u8 {
@@ -201,11 +213,11 @@ pub(crate) fn render_host_resources(
     }
     let readout = monitor.readout();
     let rows = [
-        ("CPU", readout.cpu_percent, true),
-        ("MEM", readout.memory_percent, false),
-        ("GPU", readout.gpu_percent, false),
+        ("CPU", readout.cpu_percent, &monitor.cpu_history),
+        ("MEM", readout.memory_percent, &monitor.memory_history),
+        ("GPU", readout.gpu_percent, &monitor.gpu_history),
     ];
-    for (index, (label, percent, with_sparkline)) in rows.iter().enumerate() {
+    for (index, (label, percent, history)) in rows.iter().enumerate() {
         let Ok(offset) = u16::try_from(index + 1) else {
             break;
         };
@@ -221,9 +233,9 @@ pub(crate) fn render_host_resources(
                 Style::default().fg(percent_color(*percent, palette)),
             ),
         ];
-        if *with_sparkline && row.width >= SPARKLINE_MIN_WIDTH {
+        if row.width >= SPARKLINE_MIN_WIDTH {
             let room = usize::from(row.width.saturating_sub(SPARKLINE_MIN_WIDTH - 5));
-            let graph = sparkline(&monitor.cpu_history, room);
+            let graph = sparkline(history, room);
             if !graph.is_empty() {
                 spans.push(Span::styled(
                     format!(" {graph}"),
@@ -385,6 +397,8 @@ mod tests {
             gpu_percent: None,
         };
         monitor.cpu_history = (0..5u8).map(|step| step * 20).collect();
+        monitor.memory_history = (0..5u8).map(|_| 50).collect();
+        monitor.gpu_history = VecDeque::new();
         let area = Rect::new(0, 0, 24, STRIP_ROWS);
         let mut buffer = Buffer::empty(area);
         render_host_resources(&mut buffer, area, &monitor, &Palette::catppuccin());
@@ -414,8 +428,18 @@ mod tests {
         );
         assert!(
             rows[1].chars().any(|glyph| "▁▂▃▄▅▆▇█".contains(glyph)),
-            "the CPU row carries the sparkline: {:?}",
+            "the CPU row graphs its own history: {:?}",
             rows[1]
+        );
+        assert!(
+            rows[2].chars().any(|glyph| "▁▂▃▄▅▆▇█".contains(glyph)),
+            "so does memory: {:?}",
+            rows[2]
+        );
+        assert!(
+            !rows[3].chars().any(|glyph| "▁▂▃▄▅▆▇█".contains(glyph)),
+            "a metric with no history graphs nothing rather than a flat floor: {:?}",
+            rows[3]
         );
         // The sidebar's separator column is left to the sidebar itself.
         for row in &rows {
@@ -458,15 +482,20 @@ mod tests {
     }
 
     #[test]
-    fn history_is_bounded() {
-        let mut monitor = HostResourceMonitor::default();
+    fn each_history_is_bounded_and_skips_unreadable_metrics() {
+        let mut history = VecDeque::new();
         for sample in 0..(HISTORY_SAMPLES * 2) {
-            let percent = u8::try_from(sample % 101).unwrap_or(0);
-            if monitor.cpu_history.len() >= HISTORY_SAMPLES {
-                monitor.cpu_history.pop_front();
-            }
-            monitor.cpu_history.push_back(percent);
+            push_sample(&mut history, Some(u8::try_from(sample % 101).unwrap_or(0)));
         }
-        assert_eq!(monitor.cpu_history.len(), HISTORY_SAMPLES);
+        assert_eq!(history.len(), HISTORY_SAMPLES);
+        // The oldest samples fall off the front, so the newest survives.
+        assert_eq!(
+            history.back().copied(),
+            Some(u8::try_from((HISTORY_SAMPLES * 2 - 1) % 101).unwrap_or(0))
+        );
+
+        let mut absent = VecDeque::new();
+        push_sample(&mut absent, None);
+        assert!(absent.is_empty(), "an unreadable metric records nothing");
     }
 }
