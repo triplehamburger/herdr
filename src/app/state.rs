@@ -524,6 +524,47 @@ impl Palette {
         }
     }
 
+    /// Ariake Dark — the VS Code theme of the same name, which ports Ariake Dark
+    /// Syntax to a palette drawn from traditional Japanese colors.
+    ///
+    /// Surfaces follow its own UI colors, greyed: Ariake's #1c1f26 sidebar, tab
+    /// bar and status bar leans +10 blue over red, which reads cold across a
+    /// whole TUI, so the panel and the row above it keep the theme at +7 and a
+    /// little lighter. The selection colors stay as Ariake sets them, #343d46 for
+    /// a selected list row and #4f5b66 for the editor selection, so a highlight
+    /// still carries the blue.
+    ///
+    /// States come from its syntax and diff colors. Four values are lifted out of
+    /// hue-faithful range so they clear 4.5:1 on the panel, the same adjustment
+    /// the muted tones in the other dark themes here get: its #65737e, #7d839b
+    /// and #555c77 greys read 2.5:1 to 4.4:1, and its #a571f4 purple and #e05252
+    /// red read 4.9:1 and 4.3:1. Ariake has no orange, so `peach` is blended from
+    /// the amber and red below rather than making a second state share one of
+    /// them.
+    pub fn ariake_dark() -> Self {
+        Self {
+            accent: Color::Rgb(147, 221, 251), // support types
+            panel_bg: Color::Rgb(33, 35, 40),
+            sidebar_bg: Color::Reset,
+            active_row_bg: Color::Rgb(40, 42, 47),
+            selection_bg: Color::Rgb(52, 61, 70),
+            surface0: Color::Rgb(52, 61, 70),
+            surface1: Color::Rgb(79, 91, 102),
+            surface_dim: Color::Rgb(40, 42, 47),
+            overlay0: Color::Rgb(133, 149, 163),
+            overlay1: Color::Rgb(154, 167, 179),
+            text: Color::Rgb(192, 197, 206), // editor foreground
+            subtext0: Color::Rgb(170, 180, 196),
+            mauve: Color::Rgb(187, 149, 247), // types
+            green: Color::Rgb(67, 208, 138),  // diff inserted
+            yellow: Color::Rgb(224, 194, 133),
+            red: Color::Rgb(240, 113, 113),  // diff removed
+            blue: Color::Rgb(133, 177, 224), // variables
+            teal: Color::Rgb(154, 239, 234), // strings
+            peach: Color::Rgb(232, 154, 120),
+        }
+    }
+
     /// Resolve a theme by name. Returns None for unknown names.
     pub fn from_name(name: &str) -> Option<Self> {
         match crate::config::canonical_theme_name(name)? {
@@ -545,6 +586,7 @@ impl Palette {
             "rose-pine" => Some(Self::rose_pine()),
             "rose-pine-dawn" => Some(Self::rose_pine_dawn()),
             "vesper" => Some(Self::vesper()),
+            "ariake-dark" => Some(Self::ariake_dark()),
             _ => None,
         }
     }
