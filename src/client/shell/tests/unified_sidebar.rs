@@ -41,8 +41,20 @@ fn nested_snapshot() -> ClientShellSnapshot {
             "alpha-agent",
             AgentStatus::Working,
         ),
-        agent("pane_2", "ws_2", "tab_2", "beta-agent", AgentStatus::Done),
-        agent("pane_3", "ws_2", "tab_2", "gamma-agent", AgentStatus::Done),
+        agent(
+            "pane_2",
+            "ws_2",
+            "tab_2",
+            "beta-agent",
+            AgentStatus::Blocked,
+        ),
+        agent(
+            "pane_3",
+            "ws_2",
+            "tab_2",
+            "gamma-agent",
+            AgentStatus::Blocked,
+        ),
     ];
     snapshot
 }
@@ -188,7 +200,7 @@ fn collapsing_a_space_hides_its_agents_but_keeps_their_attention_counts() {
         text.contains("alpha-agent"),
         "collapsing one space must not affect another:\n{text}"
     );
-    // Two done agents are hidden, so the row carries the count in their place.
+    // Two blocked agents are hidden, so the row carries the count in their place.
     assert!(
         text.contains('2'),
         "a collapsed space reports how many agents want attention:\n{text}"
@@ -362,14 +374,14 @@ fn panes_without_agents_appear_only_when_enabled() {
     let mut config = unified_config();
 
     assert!(!config.show_panes_without_agents);
-    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config, None);
     assert!(
         rows.iter().all(|row| row.pane_id != "pane_shell"),
         "an agentless pane must stay out of the sidebar by default"
     );
 
     config.show_panes_without_agents = true;
-    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config, None);
     let shell = rows
         .iter()
         .find(|row| row.pane_id == "pane_shell")
@@ -396,7 +408,7 @@ fn pane_rows_are_one_line_and_hidden_labels_are_skipped() {
     config.show_panes_without_agents = true;
     config.hidden_pane_labels = vec!["cmd".to_string()];
 
-    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config, None);
     let shell = rows
         .iter()
         .find(|row| row.pane_id == "pane_shell")
@@ -451,7 +463,7 @@ fn a_pane_sharing_a_tab_with_an_agent_gets_no_row() {
     let mut config = unified_config();
     config.show_panes_without_agents = true;
 
-    let rows = crate::client::shell::render::agent_rows(&snapshot, &config);
+    let rows = crate::client::shell::render::agent_rows(&snapshot, &config, None);
     assert!(
         rows.iter().all(|row| row.pane_id != "pane_split"),
         "a pane split beside an agent must not get its own row"

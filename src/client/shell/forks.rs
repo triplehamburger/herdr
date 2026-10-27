@@ -52,6 +52,7 @@ pub(super) fn render_fork_bar(
     area: Rect,
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
+    stale: bool,
     hits: &mut ShellHitMap,
 ) {
     if area.width == 0 || area.height == 0 {
@@ -87,13 +88,19 @@ pub(super) fn render_fork_bar(
             break;
         }
         let rect = Rect::new(x, area.y, chip_width, area.height);
-        render_fork_chip(buffer, rect, chip, config);
+        render_fork_chip(buffer, rect, chip, config, stale);
         hits.forks.push((rect, chip.pane_id.clone()));
         x = x.saturating_add(chip_width).saturating_add(FORK_CHIP_GAP);
     }
 }
 
-fn render_fork_chip(buffer: &mut Buffer, rect: Rect, chip: &ForkChip, config: &ClientShellConfig) {
+fn render_fork_chip(
+    buffer: &mut Buffer,
+    rect: Rect,
+    chip: &ForkChip,
+    config: &ClientShellConfig,
+    stale: bool,
+) {
     let palette = &config.palette;
     let bg = if chip.focused {
         palette.active_row_bg
@@ -108,9 +115,13 @@ fn render_fork_chip(buffer: &mut Buffer, rect: Rect, chip: &ForkChip, config: &C
         rect.right(),
         status_icon(chip.status, config.status_indicators),
         Style::default()
-            .fg(status_color(chip.status, palette))
+            .fg(if stale {
+                palette.overlay0
+            } else {
+                status_color(chip.status, palette)
+            })
             .bg(bg)
-            .add_modifier(if chip.focused {
+            .add_modifier(if chip.focused && !stale {
                 Modifier::empty()
             } else {
                 Modifier::DIM
